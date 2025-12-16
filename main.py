@@ -11,7 +11,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 st.set_page_config(page_title="Análise Qualidade Ar", layout="wide")
 st.title("Representação da Análise de Dados (Notebook Replicado)")
 
-# --- 1. FUNÇÕES AUXILIARES DE PROCESSAMENTO (Do teu Notebook) ---
+# --- 1. FUNÇÕES AUXILIARES DE PROCESSAMENTO ---
 
 def processar_dataset(df, ano):
     """
@@ -38,7 +38,6 @@ def processar_dataset(df, ano):
         df[p] = pd.to_numeric(df[p], errors='coerce')
         
     # 3. IMPUTAÇÃO (CRUCIAL PARA OS VALORES BATEREM CERTO)
-    # Calcular médias semanais por distrito para preencher vazios
     if not cols_existentes:
         return df
         
@@ -85,7 +84,8 @@ def load_data():
     # Carregar Meteo
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        df_meteo['date'] = pd.to_datetime(df_meteo['date'])
+        # Forçar conversão de data aqui também para garantir
+        df_meteo['date'] = pd.to_datetime(df_meteo['date'], errors='coerce')
         df_meteo['distrito'] = df_meteo['distrito'].str.strip().str.title()
         data["meteo"] = df_meteo
     except:
@@ -100,12 +100,11 @@ df25_full = dados.get('ar_2025')
 df23_full = dados.get('ar_2023')
 df_meteo = dados.get('meteo')
 
-# --- 3. APLICAÇÃO DA LÓGICA DE FILTRO E CLASSES ---
+# --- 3. LÓGICA DE FILTRO E CLASSES ---
 
 distritos_desejados = ['Aveiro', 'Lisboa', 'Açores', 'Setúbal', 'Leiria', 'Madeira', 'Santarém']
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
-# Intervalos (Mau -> Muito Bom)
 intervalos = {
     "PM10": [(101, 1200), (51, 100), (36, 50), (21, 35), (0, 20)],
     "PM2.5": [(51, 800), (26, 50), (21, 25), (11, 20), (0, 10)],
@@ -114,7 +113,7 @@ intervalos = {
     "SO2": [(501, 1250), (351, 500), (201, 350), (101, 200), (0, 100)]
 }
 
-# Processar Classes para 2025
+# 2025
 df_ar = df25_full[df25_full['Distrito'].isin(distritos_desejados)].copy()
 for p in intervalos:
     df_ar[f'{p}_classe'] = df_ar[p].apply(lambda x: classificar_proximo(x, intervalos[p]))
@@ -122,20 +121,21 @@ for p in intervalos:
 colunas_classes = [c for c in df_ar.columns if c.endswith('_classe')]
 df_ar['Media_Classe'] = df_ar[colunas_classes].mean(axis=1)
 
-# Processar Classes para 2023 e FILTRAR DATAS (Crucial para igualar o notebook)
+# 2023
 df23_clean = pd.DataFrame()
 if df23_full is not None:
     df23_temp = df23_full[df23_full['Distrito'].isin(distritos_desejados)].copy()
     
-    # Filtro de Data: Manter em 2023 apenas os dias/meses que existem em 2025
-    datas_2025 = df_ar["Data"].dt.strftime("%m-%d").unique()
-    df23_clean = df23_temp[df23_temp["Data"].dt.strftime("%m-%d").isin(datas_2025)].copy()
-    
-    for p in intervalos:
-        df23_clean[f'{p}_classe'] = df23_clean[p].apply(lambda x: classificar_proximo(x, intervalos[p]))
+    # Filtro de Data
+    if not df_ar.empty:
+        datas_2025 = df_ar["Data"].dt.strftime("%m-%d").unique()
+        df23_clean = df23_temp[df23_temp["Data"].dt.strftime("%m-%d").isin(datas_2025)].copy()
         
-    colunas_classes_23 = [c for c in df23_clean.columns if c.endswith('_classe')]
-    df23_clean['Media_Classe'] = df23_clean[colunas_classes_23].mean(axis=1)
+        for p in intervalos:
+            df23_clean[f'{p}_classe'] = df23_clean[p].apply(lambda x: classificar_proximo(x, intervalos[p]))
+            
+        colunas_classes_23 = [c for c in df23_clean.columns if c.endswith('_classe')]
+        df23_clean['Media_Classe'] = df23_clean[colunas_classes_23].mean(axis=1)
 
 # ==============================================================================
 # VISUALIZAÇÕES
@@ -157,7 +157,6 @@ st.pyplot(fig1)
 if not df23_clean.empty:
     st.header("2. Comparação Distribuição 2023 vs 2025")
     
-    # Preparar DataFrame conjunto
     df23_viz = df23_clean[["Data", "Distrito", "Media_Classe"] + poluentesclean].copy()
     df23_viz["Ano"] = 2023
     
@@ -172,7 +171,6 @@ if not df23_clean.empty:
         sns.boxplot(data=df_comparacao, x='Ano', y=p, ax=axes[i], palette="Set2")
         axes[i].set_title(p)
     
-    # Limpar eixos vazios
     for j in range(len(poluentesclean), len(axes)):
         fig2.delaxes(axes[j])
             
@@ -209,7 +207,6 @@ if not df23_clean.empty:
     # ------------------------------------------------------------------------------
     st.header("4. Comparação Média Geral da Classe")
     
-    # Cálculo exato das médias globais
     media_geral_23 = df23_viz['Media_Classe'].mean()
     media_geral_25 = df25_viz['Media_Classe'].mean()
     
@@ -221,19 +218,22 @@ if not df23_clean.empty:
     fig4 = plt.figure(figsize=(6,5))
     ax = sns.barplot(data=media_geral_df, x='Ano', y='Media_Classe', palette=['#FFA500', '#1F77B4'])
     
-    # Anotações
     for p in ax.patches:
         ax.annotate(f'{p.get_height():.2f}', 
                    (p.get_x() + p.get_width() / 2., p.get_height()), 
                    ha='center', va='bottom', fontsize=12)
                    
-    plt.ylim(0, 5.5) # Ajuste para caber escala de 1 a 5
+    plt.ylim(0, 5.5)
     st.pyplot(fig4)
 
 # ------------------------------------------------------------------------------
 
 if df_meteo is not None:
     st.header("5. Correlações (Meteo vs Qualidade Ar)")
+    
+    # --- CORREÇÃO DO ERRO ---
+    # Garantir que a coluna 'date' é datetime antes de usar .dt
+    df_meteo['date'] = pd.to_datetime(df_meteo['date'], errors='coerce')
     
     # Preparar merge
     df_ar_corr = df_ar.copy()
@@ -244,7 +244,8 @@ if df_meteo is not None:
     
     # Heatmap 1
     cols_meteo = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
-    df_corr1 = df_combinado[cols_meteo].corr()
+    # Dropna para garantir correlação válida
+    df_corr1 = df_combinado[cols_meteo].dropna().corr()
     
     fig5 = plt.figure(figsize=(8, 6))
     sns.heatmap(df_corr1, annot=True, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
@@ -255,7 +256,6 @@ if df_meteo is not None:
     cols_full = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m"] + poluentesclean
     df_corr2 = df_combinado[cols_full].corr()
     
-    # Filtrar apenas Meteo (linhas) x Poluentes (colunas)
     meteo_vars = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m"]
     corr_sub = df_corr2.loc[[c for c in meteo_vars if c in df_corr2.index], 
                             [c for c in poluentesclean if c in df_corr2.columns]]
@@ -265,7 +265,7 @@ if df_meteo is not None:
     st.pyplot(fig6)
 
 # ==============================================================================
-# MACHINE LEARNING - SVR AUTOREGRESSIVO (Lisboa)
+# MACHINE LEARNING - SVR AUTOREGRESSIVO
 # ==============================================================================
 
 st.header("6. Machine Learning: SVR Autoregressivo")
@@ -273,8 +273,7 @@ st.markdown("Previsão para **Lisboa**")
 
 df_lisboa = df_ar[df_ar['Distrito'] == 'Lisboa'].sort_values('Data').copy()
 
-if len(df_lisboa) > 10: # Só executa se houver dados suficientes
-    # Criar Lags (1 a 7)
+if len(df_lisboa) > 10:
     for lag in range(1, 8):
         df_lisboa[f"lag{lag}"] = df_lisboa["Media_Classe"].shift(lag)
     
