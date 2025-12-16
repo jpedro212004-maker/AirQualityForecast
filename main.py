@@ -295,6 +295,111 @@ elif section == "Machine Learning":
             
             # PARÂMETROS IGUAIS AO NOTEBOOK
             param_grids = {
-                "Random
+                "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
+                "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
+                "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
+            }
+            
+            models = {
+                "RandomForest": RandomForestRegressor(random_state=42),
+                "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
+                "MLP": MLPRegressor(random_state=42)
+            }
+            
+            prog = st.progress(0)
+            
+            for i, target in enumerate(Y_cols):
+                if target not in dfL.columns: continue
+                
+                y = dfL[target].dropna()
+                X = dfL[X_cols].loc[y.index] # X SEM LAGS AQUI
+                
+                imputer = SimpleImputer(strategy="mean")
+                X_imp = imputer.fit_transform(X)
+                
+                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
+                
+                for name, model in models.items():
+                    try:
+                        grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
+                        grid.fit(X_train, y_train)
+                        
+                        best_model = grid.best_estimator_
+                        y_pred = best_model.predict(X_test)
+                        
+                        mae = mean_absolute_error(y_test, y_pred)
+                        r2 = r2_score(y_test, y_pred)
+                        
+                        results.append({
+                            "Poluente": target, "Modelo": name, 
+                            "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
+                        })
+                    except Exception as e:
+                        st.write(f"Erro em {name}: {e}")
+                prog.progress((i+1)/len(Y_cols))
+            
+            st.dataframe(pd.DataFrame(results))
+
+# ==============================================================================
+# 4. SVR AUTOREGRESSIVO (CORRIGIDO E IGUAL AO SNIPPET)
+# ==============================================================================
+elif section == "SVR Autoregressivo":
+    st.header("📈 SVR Autoregressivo (Com Lags)")
+    
+    # 1. Filtro Lisboa DIRETO do df_ar (Sem merge com meteo que corta dados)
+    # Nota: No df_ar original os nomes são 'Distrito' e 'Data'
+    df_lisboa_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    df_lisboa_svr = df_lisboa_svr.sort_values("Data")
+    
+    # 2. Criar df_class como pedido
+    df_class = df_lisboa_svr.copy()
+    
+    if not df_class.empty:
+        # AQUI SIM, CRIAMOS OS LAGS (IGUAL AO SEU CÓDIGO)
+        for lag in range(1, 8):
+            df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
+        
+        # 3. Drop NA
+        df_class = df_class.dropna()
+        
+        # 4. Definir df_ar como pedido no snippet para visualização
+        df_ar_svr = df_class.copy()
+        
+        # --- VISUALIZAÇÃO PEDIDA DO DATAFRAME ---
+        st.subheader("Dataframe usado no SVR (df_class / df_ar)")
+        st.dataframe(df_ar_svr)
+        
+        # 5. X e y
+        X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
+        y = df_ar_svr["Media_Classe"]
+        
+        # 6. Treino
+        model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
+        model_ar.fit(X, y)
+        y_pred = model_ar.predict(X)
+        
+        # 7. Métricas
+        st.write("### Resultados SVR")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("MAE", f"{mean_absolute_error(y, y_pred):.4f}")
+        c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred)):.4f}")
+        c3.metric("R2", f"{r2_score(y, y_pred):.4f}")
+        
+        # 8. Gráfico (Plotly) - Usando Data e não indices
+        dates = df_class["Data"] # Já está alinhado pois usamos dropna
+        
+        fig_svr = go.Figure()
+        fig_svr.add_trace(go.Scatter(x=dates, y=y, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+        fig_svr.update_layout(
+            title="SVR Autoregressivo - Real vs Previsto", 
+            xaxis_title="Data", 
+            yaxis_title="Media da Classe",
+            template="plotly_white",
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig_svr, use_container_width=True)
+    else:
+        st.warning("Sem dados suficientes para Lisboa.")
 
 
