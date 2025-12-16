@@ -386,7 +386,3 @@ elif section == "SVR Autoregressivo":
         
     else:
         st.warning("Sem dados suficientes para Lisboa.")
-        st.plotly_chart(fig_svr, use_container_width=True)
-    else:
-        st.warning("Sem dados suficientes para Lisboa no ficheiro de Qualidade do Ar.")
-
