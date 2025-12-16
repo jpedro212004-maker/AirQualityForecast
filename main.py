@@ -253,7 +253,7 @@ elif section == "EDA":
             st.pyplot(fig5)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (AGORA IGUAL AO TEU SNIPPET)
+# 3. MACHINE LEARNING (IGUAL AO SNIPPET)
 # ==============================================================================
 elif section == "Machine Learning":
     st.header("🤖 Machine Learning (Lisboa)")
@@ -264,27 +264,21 @@ elif section == "Machine Learning":
         st.stop()
         
     # --- PREPARAÇÃO DOS DADOS IGUAL AO NOTEBOOK ---
-    # 1. Renomear colunas para uniformizar (Passo crucial do teu notebook)
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
-    
-    # 2. Filtrar distritos válidos na meteo
     distritos_validos = df_ar_ml['distrito'].unique()
     df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)]
-    
-    # 3. Tratamento de data e group by na meteo (conforme teu snippet)
-    # Converter para diário (média por dia)
     df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.floor('D')
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
-    
-    # 4. Merge pelos campos comuns: 'date' e 'distrito'
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
-    
-    # 5. Drop NA
     df_Model = df_merged.dropna().copy()
     
-    # 6. Filtrar Lisboa
+    # Filtro Lisboa
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
+    
+    # --- MOSTRAR DATAFRAME USADO (dfL) ---
+    st.subheader("Dataframe usado para ML (dfL)")
+    st.dataframe(dfL)
     
     if dfL.empty:
         st.warning("Sem dados combinados para Lisboa.")
@@ -362,54 +356,60 @@ elif section == "Machine Learning":
             st.dataframe(pd.DataFrame(results))
 
 # ==============================================================================
-# 4. SVR AUTOREGRESSIVO (AQUELE GRÁFICO "BOM")
+# 4. SVR AUTOREGRESSIVO (COM VISUALIZAÇÃO df_class)
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
-    if df_meteo is None: st.stop()
-    
-    # REPETIR A MESMA PREPARAÇÃO DE DADOS PARA GARANTIR CONSISTÊNCIA
-    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
-    distritos_validos = df_ar_ml['distrito'].unique()
-    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)]
-    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.floor('D')
-    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
-    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
-    df_Model = df_merged.dropna().copy()
-    
-    # Filtro Lisboa e Ordenação
-    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
-    dfL = dfL.sort_values("date").reset_index(drop=True)
+    # 1. Filtro Lisboa e Ordenação (Sem Meteo para não cortar dados)
+    dfL = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("Data")
     
     if not dfL.empty:
-        # AQUI SIM, CRIAMOS OS LAGS (IGUAL AO SEU CÓDIGO FINAL DE SVR)
+        # 2. Criar Lags
         df_class = dfL.copy()
         for lag in range(1, 8):
             df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
         
+        # 3. Drop NA
         df_class = df_class.dropna()
+        
+        # --- MOSTRAR DATAFRAME USADO (df_class) ---
+        st.subheader("Dataframe usado para SVR (df_class)")
+        st.dataframe(df_class)
+        
+        # 4. Definir X e y
         X_svr = df_class[[f"lag{i}" for i in range(1, 8)]]
         y_svr = df_class["Media_Classe"]
         
-        # Treino
+        # 5. Treino
         model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
         model_ar.fit(X_svr, y_svr)
         y_pred = model_ar.predict(X_svr)
         
+        # 6. Métricas
         c1, c2, c3 = st.columns(3)
         c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred):.4f}")
         c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred)):.4f}")
         c3.metric("R2", f"{r2_score(y_svr, y_pred):.4f}")
         
-        # Gráfico
+        # 7. Gráfico
+        dates = dfL["Data"].iloc[len(dfL)-len(y_pred):]
+        # Nota: Usamos df_class['Data'] que já teve dropna, então y_pred tem mesmo tamanho
+        
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
-        fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
-        fig_svr.update_layout(title="SVR - Real vs Previsto", xaxis_title="Data", template="plotly_white")
+        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+        
+        fig_svr.update_layout(
+            title="SVR - Real vs Previsto", 
+            xaxis_title="Data", 
+            yaxis_title="Media da Classe",
+            template="plotly_white",
+            hovermode="x unified"
+        )
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
-        st.warning("Sem dados suficientes para Lisboa.")
-
+        st.warning("Sem dados suficientes para Lisboa no ficheiro de Qualidade do Ar.")
 
 
