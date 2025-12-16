@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # Bibliotecas de ML
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
@@ -36,9 +36,6 @@ def processar_dados_notebook():
         if "Tipo" in dfqualidadear.columns: dfqualidadear = dfqualidadear.drop(["Tipo", "Zona"], axis=1)
         
         dfqualidadear['Data'] = pd.to_datetime(dfqualidadear['Data'], dayfirst=True, errors='coerce')
-        # NORMALIZAÇÃO CRÍTICA: Remover horas, manter apenas Ano-Mês-Dia (00:00:00)
-        dfqualidadear['Data'] = dfqualidadear['Data'].dt.normalize()
-        
         dfqualidadear['Semana'] = dfqualidadear['Data'].dt.isocalendar().week
         dfqualidadear['Ano'] = dfqualidadear['Data'].dt.year
         
@@ -126,11 +123,11 @@ def processar_dados_notebook():
     # --- C. METEOROLOGIA ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # 1. Converter para datetime e UTC
+        # CORREÇÃO CRÍTICA PARA ERRO .DT E TIMEZONE
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
-        # 2. Remover Timezone (fica Naive)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
-        # 3. NORMALIZAÇÃO CRÍTICA: Forçar hora a 00:00:00 para o merge funcionar
+        
+        # NORMALIZAÇÃO CRÍTICA PARA MERGE (Remover horas)
         df_meteo["date"] = df_meteo["date"].dt.normalize()
         
         if 'distrito' in df_meteo.columns:
@@ -154,7 +151,7 @@ if df_ar is None:
 st.sidebar.title("📌 Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
-    ["Datasets", "EDA", "Machine Learning", "SVR Autoregressivo"]
+    ["Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "SVR Autoregressivo"]
 )
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
@@ -239,11 +236,9 @@ elif section == "EDA":
             ax.annotate(f'{p.get_height():.2f}', (p.get_x()+p.get_width()/2., p.get_height()), ha='center', va='bottom')
         st.pyplot(fig4)
 
-    # Correlações
     if df_meteo is not None:
         st.subheader("5. Correlações (Meteo vs Ar)")
         df_ar_m = df_ar.copy()
-        # Garantir normalização aqui também
         df_ar_m["Dia"] = df_ar_m["Data"].dt.normalize()
         df_meteo["Dia"] = df_meteo["date"].dt.normalize()
         
@@ -258,47 +253,36 @@ elif section == "EDA":
             st.pyplot(fig5)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (AGORA COM MERGE CORRIGIDO POR DATA)
+# 3. MACHINE LEARNING (BASE - SÓ METEO)
 # ==============================================================================
-elif section == "Machine Learning":
-    st.header("🤖 Machine Learning (Lisboa)")
-    st.markdown("Resultados da Regressão com GridSearch (sem Lags, apenas Meteo base).")
+elif section == "Machine Learning (Base)":
+    st.header("🤖 Machine Learning (Base)")
+    st.markdown("Modelos treinados apenas com Meteorologia (Sem Lags).")
     
     if df_meteo is None:
         st.error("Sem dados de meteorologia.")
         st.stop()
         
-    # --- PREPARAÇÃO DOS DADOS IGUAL AO NOTEBOOK (COM FIX DE HORA) ---
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
-    
-    # Normalizar para garantir merge
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
     
     distritos_validos = df_ar_ml['distrito'].unique()
     df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)].copy()
-    
-    # Normalizar meteo também
     df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.normalize()
-    
-    # Agrupar por dia (para ter uma linha por dia)
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     
-    # Merge Inner
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
     
-    # Filtro Lisboa
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
     
     if dfL.empty:
-        st.warning("Sem dados combinados para Lisboa (Verifique as datas no Excel vs CSV).")
+        st.warning("Sem dados combinados para Lisboa.")
     else:
-        # VISUALIZAÇÃO PEDIDA DO DATAFRAME
-        st.subheader("Dataframe do Modelo (dfL)")
+        st.subheader("Dataset (dfL)")
         st.dataframe(dfL)
 
-        # Features EXATAS do teu loop (Só meteo, SEM LAGS AQUI)
         X_cols = [
             "rain", "temperature_2m", "relative_humidity_2m",
             "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -306,14 +290,117 @@ elif section == "Machine Learning":
         ]
         Y_cols = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
         
-        if st.button("Treinar Modelos (GridSearch)"):
+        if st.button("Treinar Modelos (Base)"):
             results = []
-            
-            # PARÂMETROS IGUAIS AO NOTEBOOK
             param_grids = {
                 "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
                 "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
                 "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
+            }
+            models = {
+                "RandomForest": RandomForestRegressor(random_state=42),
+                "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
+                "MLP": MLPRegressor(random_state=42)
+            }
+            prog = st.progress(0)
+            
+            for i, target in enumerate(Y_cols):
+                if target not in dfL.columns: continue
+                y = dfL[target].dropna()
+                X = dfL[X_cols].loc[y.index]
+                
+                imputer = SimpleImputer(strategy="mean")
+                X_imp = imputer.fit_transform(X)
+                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
+                
+                for name, model in models.items():
+                    try:
+                        grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
+                        grid.fit(X_train, y_train)
+                        y_pred = grid.best_estimator_.predict(X_test)
+                        mae = mean_absolute_error(y_test, y_pred)
+                        r2 = r2_score(y_test, y_pred)
+                        results.append({"Poluente": target, "Modelo": name, "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2})
+                    except Exception as e:
+                        st.write(f"Erro em {name}: {e}")
+                prog.progress((i+1)/len(Y_cols))
+            
+            st.dataframe(pd.DataFrame(results))
+
+# ==============================================================================
+# 4. MACHINE LEARNING (AVANÇADO - COM LAGS E ROLLING)
+# ==============================================================================
+elif section == "Machine Learning (Avançado/Lags)":
+    st.header("🤖 Machine Learning (Avançado)")
+    st.markdown("""
+    **Estratégia:**
+    - Lags temporais (1 e 2 dias anteriores)
+    - Médias Móveis (janela de 3 dias)
+    - Variáveis de Data (Mês, Dia da Semana)
+    - Normalização (StandardScaler)
+    - Validação Temporal (TimeSeriesSplit)
+    """)
+    
+    if df_meteo is None:
+        st.error("Sem dados de meteorologia.")
+        st.stop()
+        
+    # --- PREPARAÇÃO ---
+    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
+    df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
+    
+    distritos_validos = df_ar_ml['distrito'].unique()
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)].copy()
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.normalize()
+    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
+    
+    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
+    df_Model = df_merged.dropna().copy()
+    
+    # Filtro Lisboa
+    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("date").reset_index(drop=True)
+    
+    Y_cols = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
+    
+    # --- FEATURE ENGINEERING (IGUAL AO SEU SNIPPET) ---
+    for col in Y_cols:
+        if col in dfL.columns:
+            dfL[f"{col}_lag1"] = dfL[col].shift(1)
+            dfL[f"{col}_lag2"] = dfL[col].shift(2)
+            dfL[f"{col}_roll3"] = dfL[col].rolling(3).mean()
+            
+    dfL["month"] = dfL["date"].dt.month
+    dfL["weekday"] = dfL["date"].dt.weekday
+    
+    # Remover NaNs gerados pelos lags
+    dfL = dfL.dropna()
+    
+    if dfL.empty:
+        st.warning("Dados insuficientes após criação de lags.")
+    else:
+        st.subheader("Dataset Expandido (dfL com Lags)")
+        st.dataframe(dfL.head())
+        
+        # Definir X_cols Expandido
+        X_cols_base = [
+            "rain", "temperature_2m", "relative_humidity_2m",
+            "temperature_80m", "wind_speed_80m", "wind_direction_80m",
+            "temperature_2m_max", "temperature_2m_min"
+        ]
+        X_cols_lags = [f"{c}_lag1" for c in Y_cols] + [f"{c}_lag2" for c in Y_cols] + [f"{c}_roll3" for c in Y_cols]
+        X_cols = X_cols_base + X_cols_lags + ["month", "weekday"]
+        
+        # Filtra colunas que realmente existem
+        X_cols = [c for c in X_cols if c in dfL.columns]
+
+        if st.button("Treinar Modelos (Avançado)"):
+            results1 = []
+            
+            param_grids = {
+                "RandomForest": {"n_estimators": [100], "max_depth": [5, 10]}, # Reduzi ligeiramente para ser mais rapido
+                "LightGBM": {"n_estimators": [100], "learning_rate": [0.1]},
+                "MLP": {"hidden_layer_sizes": [(64,32)], "alpha": [0.001], "max_iter": [300]}
             }
             
             models = {
@@ -322,22 +409,28 @@ elif section == "Machine Learning":
                 "MLP": MLPRegressor(random_state=42)
             }
             
+            tscv = TimeSeriesSplit(n_splits=3)
             prog = st.progress(0)
             
             for i, target in enumerate(Y_cols):
                 if target not in dfL.columns: continue
                 
-                y = dfL[target].dropna()
-                X = dfL[X_cols].loc[y.index]
+                y = dfL[target]
+                X = dfL[X_cols]
                 
+                # --- PROCESSAMENTO DO SNIPPET (Impute -> Scale -> Split) ---
                 imputer = SimpleImputer(strategy="mean")
                 X_imp = imputer.fit_transform(X)
                 
-                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(X_imp)
+                
+                X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, shuffle=False)
                 
                 for name, model in models.items():
                     try:
-                        grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
+                        # GridSearch com TimeSeriesSplit
+                        grid = GridSearchCV(model, param_grids[name], cv=tscv, scoring="neg_mean_absolute_error", n_jobs=1)
                         grid.fit(X_train, y_train)
                         
                         best_model = grid.best_estimator_
@@ -346,7 +439,7 @@ elif section == "Machine Learning":
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
                         
-                        results.append({
+                        results1.append({
                             "Poluente": target, "Modelo": name, 
                             "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
                         })
@@ -354,70 +447,48 @@ elif section == "Machine Learning":
                         st.write(f"Erro em {name}: {e}")
                 prog.progress((i+1)/len(Y_cols))
             
-            st.dataframe(pd.DataFrame(results))
+            st.dataframe(pd.DataFrame(results1))
 
 # ==============================================================================
-# 4. SVR AUTOREGRESSIVO (CORRIGIDO E IGUAL AO SNIPPET)
+# 5. SVR AUTOREGRESSIVO
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
-    # 1. Filtro Lisboa DIRETO do df_ar (Sem merge com meteo que corta dados)
-    # AQUI ESTA O TRUQUE: Usamos o dataframe original (df_ar) que tem todos os dias
     dfL_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
-    
-    # Normalizar data só para garantir
     dfL_svr['Data'] = dfL_svr['Data'].dt.normalize()
     dfL_svr = dfL_svr.sort_values("Data")
     
-    # 2. Criar df_class como pedido
     df_class = dfL_svr.copy()
     
     if not df_class.empty:
-        # AQUI SIM, CRIAMOS OS LAGS (IGUAL AO SEU CÓDIGO)
         for lag in range(1, 8):
             df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
         
-        # 3. Drop NA
         df_class = df_class.dropna()
-        
-        # 4. Definir df_ar como pedido no snippet para visualização
         df_ar_svr = df_class.copy()
         
-        # --- VISUALIZAÇÃO PEDIDA DO DATAFRAME ---
         st.subheader("Dataframe usado no SVR (df_class / df_ar)")
         st.dataframe(df_ar_svr)
         
-        # 5. X e y
         X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
         y = df_ar_svr["Media_Classe"]
         
-        # 6. Treino
         model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
         model_ar.fit(X, y)
         y_pred = model_ar.predict(X)
         
-        # 7. Métricas
         st.write("### Resultados SVR")
         c1, c2, c3 = st.columns(3)
         c1.metric("MAE", f"{mean_absolute_error(y, y_pred):.4f}")
         c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred)):.4f}")
         c3.metric("R2", f"{r2_score(y, y_pred):.4f}")
         
-        # 8. Gráfico (Plotly)
-        dates = df_class["Data"].iloc[len(df_class)-len(y_pred):]
-        real_values = df_class["Media_Classe"].iloc[len(df_class)-len(y_pred):]
-        
+        dates = df_class["Data"]
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=dates, y=real_values, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=dates, y=y, mode="lines", name="Real", line=dict(color="blue")))
         fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
-        fig_svr.update_layout(
-            title="SVR Autoregressivo - Real vs Previsto", 
-            xaxis_title="Data", 
-            yaxis_title="Media da Classe",
-            template="plotly_white",
-            hovermode="x unified"
-        )
+        fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
         st.warning("Sem dados suficientes para Lisboa.")
