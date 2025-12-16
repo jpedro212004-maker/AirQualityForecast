@@ -18,13 +18,13 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, E
 from lightgbm import LGBMRegressor
 
 # =============================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIG
 # =============================
 st.set_page_config(page_title="Qualidade do Ar em Portugal", layout="wide")
 st.title("🌍 Qualidade do Ar e Meteorologia em Portugal")
 
 # =============================
-# PROCESSAMENTO DE DADOS (CACHE)
+# PROCESSING (CACHE)
 # =============================
 @st.cache_data
 def processar_dados_notebook():
@@ -36,6 +36,9 @@ def processar_dados_notebook():
         if "Tipo" in dfqualidadear.columns: dfqualidadear = dfqualidadear.drop(["Tipo", "Zona"], axis=1)
         
         dfqualidadear['Data'] = pd.to_datetime(dfqualidadear['Data'], dayfirst=True, errors='coerce')
+        # NORMALIZAÇÃO CRÍTICA: Remover horas, manter apenas Ano-Mês-Dia (00:00:00)
+        dfqualidadear['Data'] = dfqualidadear['Data'].dt.normalize()
+        
         dfqualidadear['Semana'] = dfqualidadear['Data'].dt.isocalendar().week
         dfqualidadear['Ano'] = dfqualidadear['Data'].dt.year
         
@@ -123,9 +126,12 @@ def processar_dados_notebook():
     # --- C. METEOROLOGIA ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # CORREÇÃO CRÍTICA PARA ERRO .DT E TIMEZONE
+        # 1. Converter para datetime e UTC
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
+        # 2. Remover Timezone (fica Naive)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
+        # 3. NORMALIZAÇÃO CRÍTICA: Forçar hora a 00:00:00 para o merge funcionar
+        df_meteo["date"] = df_meteo["date"].dt.normalize()
         
         if 'distrito' in df_meteo.columns:
             df_meteo["distrito"] = df_meteo["distrito"].astype(str).str.strip().str.title()
@@ -135,7 +141,7 @@ def processar_dados_notebook():
 
     return df_ar, df2023_mediaclean, df_meteo, distritos_desejados
 
-# Carregar dados
+# Carregar dados globalmente
 df_ar, df2023_clean, df_meteo, distritos_desejados = processar_dados_notebook()
 
 if df_ar is None:
@@ -143,7 +149,7 @@ if df_ar is None:
     st.stop()
 
 # ==============================================================================
-# SIDEBAR - NAVEGAÇÃO
+# SIDEBAR
 # ==============================================================================
 st.sidebar.title("📌 Navegação")
 section = st.sidebar.radio(
@@ -159,15 +165,15 @@ poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 if section == "Datasets":
     st.header("📂 Datasets Utilizados")
     if df_meteo is not None:
-        st.subheader("Meteorologia")
-        st.dataframe(df_meteo)
+        st.subheader("Meteorologia (Normalizado)")
+        st.dataframe(df_meteo.head())
     
     st.subheader("Qualidade do Ar 2025 (Processado)")
-    st.dataframe(df_ar)
+    st.dataframe(df_ar.head())
 
     if df2023_clean is not None:
         st.subheader("Qualidade do Ar 2023 (Processado)")
-        st.dataframe(df2023_clean)
+        st.dataframe(df2023_clean.head())
 
 # ==============================================================================
 # 2. EDA
@@ -237,8 +243,9 @@ elif section == "EDA":
     if df_meteo is not None:
         st.subheader("5. Correlações (Meteo vs Ar)")
         df_ar_m = df_ar.copy()
-        df_ar_m["Dia"] = df_ar_m["Data"].dt.date
-        df_meteo["Dia"] = df_meteo["date"].dt.date
+        # Garantir normalização aqui também
+        df_ar_m["Dia"] = df_ar_m["Data"].dt.normalize()
+        df_meteo["Dia"] = df_meteo["date"].dt.normalize()
         
         df_merged = pd.merge(df_ar_m, df_meteo, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left")
         
@@ -251,7 +258,7 @@ elif section == "EDA":
             st.pyplot(fig5)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (IGUAL AO SNIPPET + VISUALIZAÇÃO dfL)
+# 3. MACHINE LEARNING (AGORA COM MERGE CORRIGIDO POR DATA)
 # ==============================================================================
 elif section == "Machine Learning":
     st.header("🤖 Machine Learning (Lisboa)")
@@ -261,13 +268,22 @@ elif section == "Machine Learning":
         st.error("Sem dados de meteorologia.")
         st.stop()
         
-    # --- PREPARAÇÃO DOS DADOS IGUAL AO NOTEBOOK ---
+    # --- PREPARAÇÃO DOS DADOS IGUAL AO NOTEBOOK (COM FIX DE HORA) ---
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
+    
+    # Normalizar para garantir merge
+    df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
+    
     distritos_validos = df_ar_ml['distrito'].unique()
-    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)]
-    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.floor('D')
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)].copy()
+    
+    # Normalizar meteo também
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.normalize()
+    
+    # Agrupar por dia (para ter uma linha por dia)
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     
+    # Merge Inner
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
     
@@ -276,10 +292,10 @@ elif section == "Machine Learning":
     dfL = dfL.sort_values("date").reset_index(drop=True)
     
     if dfL.empty:
-        st.warning("Sem dados combinados para Lisboa.")
+        st.warning("Sem dados combinados para Lisboa (Verifique as datas no Excel vs CSV).")
     else:
         # VISUALIZAÇÃO PEDIDA DO DATAFRAME
-        st.subheader("Dataframe usado para ML (dfL)")
+        st.subheader("Dataframe do Modelo (dfL)")
         st.dataframe(dfL)
 
         # Features EXATAS do teu loop (Só meteo, SEM LAGS AQUI)
@@ -312,7 +328,7 @@ elif section == "Machine Learning":
                 if target not in dfL.columns: continue
                 
                 y = dfL[target].dropna()
-                X = dfL[X_cols].loc[y.index] # X SEM LAGS AQUI
+                X = dfL[X_cols].loc[y.index]
                 
                 imputer = SimpleImputer(strategy="mean")
                 X_imp = imputer.fit_transform(X)
@@ -347,12 +363,15 @@ elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
     # 1. Filtro Lisboa DIRETO do df_ar (Sem merge com meteo que corta dados)
-    # Nota: No df_ar original os nomes são 'Distrito' e 'Data'
-    df_lisboa_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
-    df_lisboa_svr = df_lisboa_svr.sort_values("Data")
+    # AQUI ESTA O TRUQUE: Usamos o dataframe original (df_ar) que tem todos os dias
+    dfL_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    
+    # Normalizar data só para garantir
+    dfL_svr['Data'] = dfL_svr['Data'].dt.normalize()
+    dfL_svr = dfL_svr.sort_values("Data")
     
     # 2. Criar df_class como pedido
-    df_class = df_lisboa_svr.copy()
+    df_class = dfL_svr.copy()
     
     if not df_class.empty:
         # AQUI SIM, CRIAMOS OS LAGS (IGUAL AO SEU CÓDIGO)
@@ -385,11 +404,12 @@ elif section == "SVR Autoregressivo":
         c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred)):.4f}")
         c3.metric("R2", f"{r2_score(y, y_pred):.4f}")
         
-        # 8. Gráfico (Plotly) - Usando Data e não indices
-        dates = df_class["Data"] # Já está alinhado pois usamos dropna
+        # 8. Gráfico (Plotly)
+        dates = df_class["Data"].iloc[len(df_class)-len(y_pred):]
+        real_values = df_class["Media_Classe"].iloc[len(df_class)-len(y_pred):]
         
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=dates, y=y, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=dates, y=real_values, mode="lines", name="Real", line=dict(color="blue")))
         fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
         fig_svr.update_layout(
             title="SVR Autoregressivo - Real vs Previsto", 
@@ -401,6 +421,3 @@ elif section == "SVR Autoregressivo":
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
         st.warning("Sem dados suficientes para Lisboa.")
-
-
-
