@@ -275,7 +275,7 @@ elif section == "Machine Learning":
     # Filtrar Lisboa
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
-    
+    st.dfL
     if dfL.empty:
         st.warning("Sem dados combinados para Lisboa.")
     else:
@@ -334,7 +334,7 @@ elif section == "SVR Autoregressivo":
     
     # 2. Ordenar por data (Essencial para lags)
     df_class = df_class.sort_values("Data")
-    
+    st.df_class
     if not df_class.empty:
         # REPLICA EXATA DA LOGICA DO SNIPPET
         df_ar_svr = df_class.copy()
@@ -386,3 +386,4 @@ elif section == "SVR Autoregressivo":
         
     else:
         st.warning("Sem dados suficientes para Lisboa.")
+
