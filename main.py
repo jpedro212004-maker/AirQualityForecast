@@ -19,6 +19,45 @@ st.title("🌍 Qualidade do Ar em Portugal")
 st.write("Análise Exploratória de Dados (EDA) — 2023 vs 2025")
 
 # =========================================================
+# FUNÇÕES AUXILIARES (ROBUSTEZ)
+# =========================================================
+def normalizar_coluna_data(df, nome_dataset):
+    possible_date_cols = [
+        "Data", "DATA", "date", "Date",
+        "data", "dia", "data_medicao"
+    ]
+    date_col = None
+    for col in df.columns:
+        if col in possible_date_cols:
+            date_col = col
+            break
+    if date_col is None:
+        st.error(f"❌ Coluna de data não encontrada no dataset {nome_dataset}.")
+        st.stop()
+    df = df.rename(columns={date_col: "Data"})
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    return df
+
+
+def normalizar_coluna_distrito(df):
+    possible_distrito_cols = [
+        "Distrito", "distrito", "DISTRICT",
+        "Local", "local", "Estacao", "estacao"
+    ]
+    distrito_col = None
+    for col in df.columns:
+        if col in possible_distrito_cols:
+            distrito_col = col
+            break
+    if distrito_col is None:
+        st.error("❌ Coluna de Distrito não encontrada.")
+        st.stop()
+    df = df.rename(columns={distrito_col: "Distrito"})
+    df["Distrito"] = df["Distrito"].astype(str).str.strip().str.title()
+    return df
+
+
+# =========================================================
 # CARREGAMENTO DOS DADOS
 # =========================================================
 @st.cache_data
@@ -44,19 +83,24 @@ def load_data():
 df_ar, df2023_clean, df_meteo = load_data()
 
 # =========================================================
-# VALIDAÇÕES INICIAIS
+# VALIDAÇÕES + NORMALIZAÇÃO
 # =========================================================
 if df_ar is None or df_ar.empty:
-    st.error("❌ Dataset de Qualidade do Ar 2025 não foi carregado.")
+    st.error("❌ Dataset de Qualidade do Ar 2025 não carregado.")
     st.stop()
 
-df_ar["Data"] = pd.to_datetime(df_ar["Data"])
+df_ar = normalizar_coluna_data(df_ar, "2025")
+df_ar = normalizar_coluna_distrito(df_ar)
 
-if df2023_clean is not None:
-    df2023_clean["Data"] = pd.to_datetime(df2023_clean["Data"])
+if df2023_clean is not None and not df2023_clean.empty:
+    df2023_clean = normalizar_coluna_data(df2023_clean, "2023")
+    df2023_clean = normalizar_coluna_distrito(df2023_clean)
 
 # Poluentes disponíveis
-poluentesclean = [c for c in ["NO2", "O3", "PM2.5", "PM10", "SO2"] if c in df_ar.columns]
+poluentesclean = [
+    c for c in ["NO2", "O3", "PM2.5", "PM10", "SO2"]
+    if c in df_ar.columns
+]
 
 # =========================================================
 # EDA
@@ -77,7 +121,12 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.subheader("Componentes Diários 2025")
 
-    df_por_dia = df_ar.groupby("Data")[poluentesclean].mean().reset_index()
+    df_por_dia = (
+        df_ar
+        .groupby("Data")[poluentesclean]
+        .mean()
+        .reset_index()
+    )
 
     fig1, axes = plt.subplots(1, len(poluentesclean), figsize=(18, 5))
     for i, col in enumerate(poluentesclean):
@@ -105,9 +154,6 @@ with tab2:
         df2023_periodo["Ano"] = 2023
         df2025_periodo = df_ar.copy()
         df2025_periodo["Ano"] = 2025
-
-        for df_ in [df2023_periodo, df2025_periodo]:
-            df_["Distrito"] = df_["Distrito"].str.strip().str.title()
 
         df_comparacao = pd.concat(
             [df2023_periodo, df2025_periodo],
