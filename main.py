@@ -36,6 +36,9 @@ def processar_dados_notebook():
         if "Tipo" in dfqualidadear.columns: dfqualidadear = dfqualidadear.drop(["Tipo", "Zona"], axis=1)
         
         dfqualidadear['Data'] = pd.to_datetime(dfqualidadear['Data'], dayfirst=True, errors='coerce')
+        # NORMALIZAÇÃO DE DATA
+        dfqualidadear['Data'] = dfqualidadear['Data'].dt.normalize()
+        
         dfqualidadear['Semana'] = dfqualidadear['Data'].dt.isocalendar().week
         dfqualidadear['Ano'] = dfqualidadear['Data'].dt.year
         
@@ -123,11 +126,9 @@ def processar_dados_notebook():
     # --- C. METEOROLOGIA ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # CORREÇÃO CRÍTICA PARA ERRO .DT E TIMEZONE
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
-        
-        # NORMALIZAÇÃO CRÍTICA PARA MERGE (Remover horas)
+        # NORMALIZAÇÃO DE DATA (Importante para o Merge)
         df_meteo["date"] = df_meteo["date"].dt.normalize()
         
         if 'distrito' in df_meteo.columns:
@@ -256,8 +257,8 @@ elif section == "EDA":
 # 3. MACHINE LEARNING (BASE - SÓ METEO)
 # ==============================================================================
 elif section == "Machine Learning (Base)":
-    st.header("🤖 Machine Learning (Base)")
-    st.markdown("Modelos treinados apenas com Meteorologia (Sem Lags).")
+    st.header("🤖 Machine Learning (Base - Meteo Simples)")
+    st.markdown("Modelos treinados apenas com Meteorologia (Sem Lags). Resultados esperados mais fracos.")
     
     if df_meteo is None:
         st.error("Sem dados de meteorologia.")
@@ -331,15 +332,8 @@ elif section == "Machine Learning (Base)":
 # 4. MACHINE LEARNING (AVANÇADO - COM LAGS E ROLLING)
 # ==============================================================================
 elif section == "Machine Learning (Avançado/Lags)":
-    st.header("🤖 Machine Learning (Avançado)")
-    st.markdown("""
-    **Estratégia:**
-    - Lags temporais (1 e 2 dias anteriores)
-    - Médias Móveis (janela de 3 dias)
-    - Variáveis de Data (Mês, Dia da Semana)
-    - Normalização (StandardScaler)
-    - Validação Temporal (TimeSeriesSplit)
-    """)
+    st.header("🤖 Machine Learning (Avançado com Lags)")
+    st.markdown("Modelos treinados com Features Temporais (Lags, Rolling, etc).")
     
     if df_meteo is None:
         st.error("Sem dados de meteorologia.")
@@ -363,7 +357,8 @@ elif section == "Machine Learning (Avançado/Lags)":
     
     Y_cols = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
     
-    # --- FEATURE ENGINEERING (IGUAL AO SEU SNIPPET) ---
+    # --- FEATURE ENGINEERING ---
+    # Igual ao snippet: Cria Lags e Rolling
     for col in Y_cols:
         if col in dfL.columns:
             dfL[f"{col}_lag1"] = dfL[col].shift(1)
@@ -373,81 +368,81 @@ elif section == "Machine Learning (Avançado/Lags)":
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
     
-    # Remover NaNs gerados pelos lags
-    dfL = dfL.dropna()
+    # NOTA: NÃO fazemos dropna aqui, deixamos o Imputer lidar com os NaNs dos lags, 
+    # exatamente como no snippet original do notebook.
     
-    if dfL.empty:
-        st.warning("Dados insuficientes após criação de lags.")
-    else:
-        st.subheader("Dataset Expandido (dfL com Lags)")
-        st.dataframe(dfL.head())
-        
-        # Definir X_cols Expandido
-        X_cols_base = [
-            "rain", "temperature_2m", "relative_humidity_2m",
-            "temperature_80m", "wind_speed_80m", "wind_direction_80m",
-            "temperature_2m_max", "temperature_2m_min"
-        ]
-        X_cols_lags = [f"{c}_lag1" for c in Y_cols] + [f"{c}_lag2" for c in Y_cols] + [f"{c}_roll3" for c in Y_cols]
-        X_cols = X_cols_base + X_cols_lags + ["month", "weekday"]
-        
-        # Filtra colunas que realmente existem
-        X_cols = [c for c in X_cols if c in dfL.columns]
+    st.subheader("Dataset Expandido (dfL com Lags)")
+    st.dataframe(dfL.head())
+    
+    # Definir X_cols Expandido
+    X_cols_base = [
+        "rain", "temperature_2m", "relative_humidity_2m",
+        "temperature_80m", "wind_speed_80m", "wind_direction_80m",
+        "temperature_2m_max", "temperature_2m_min"
+    ]
+    X_cols_lags = [f"{c}_lag1" for c in Y_cols] + [f"{c}_lag2" for c in Y_cols] + [f"{c}_roll3" for c in Y_cols]
+    X_cols = X_cols_base + X_cols_lags + ["month", "weekday"]
+    
+    # Filtra colunas que realmente existem
+    X_cols = [c for c in X_cols if c in dfL.columns]
 
-        if st.button("Treinar Modelos (Avançado)"):
-            results1 = []
+    if st.button("Treinar Modelos (Avançado)"):
+        results1 = []
+        
+        # Parâmetros COMPLETOS do notebook
+        param_grids = {
+            "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
+            "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
+            "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
+        }
+        
+        models = {
+            "RandomForest": RandomForestRegressor(random_state=42),
+            "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
+            "MLP": MLPRegressor(random_state=42)
+        }
+        
+        tscv = TimeSeriesSplit(n_splits=3)
+        prog = st.progress(0)
+        
+        for i, target in enumerate(Y_cols):
+            if target not in dfL.columns: continue
             
-            param_grids = {
-                "RandomForest": {"n_estimators": [100], "max_depth": [5, 10]}, # Reduzi ligeiramente para ser mais rapido
-                "LightGBM": {"n_estimators": [100], "learning_rate": [0.1]},
-                "MLP": {"hidden_layer_sizes": [(64,32)], "alpha": [0.001], "max_iter": [300]}
-            }
+            y = dfL[target].dropna() # Drop apenas no target se houver nulos
+            X = dfL[X_cols].loc[y.index]
             
-            models = {
-                "RandomForest": RandomForestRegressor(random_state=42),
-                "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
-                "MLP": MLPRegressor(random_state=42)
-            }
+            # --- PROCESSAMENTO DO SNIPPET (Impute -> Split) ---
+            imputer = SimpleImputer(strategy="mean")
+            X_imp = imputer.fit_transform(X) # Imputer preenche os lags NaN
             
-            tscv = TimeSeriesSplit(n_splits=3)
-            prog = st.progress(0)
+            # Nota: O snippet original aplicava scaler separado, mas no loop usava só X_imp.
+            # Se quiseres com scaler, descomenta a linha abaixo:
+            # scaler = StandardScaler()
+            # X_imp = scaler.fit_transform(X_imp)
             
-            for i, target in enumerate(Y_cols):
-                if target not in dfL.columns: continue
-                
-                y = dfL[target]
-                X = dfL[X_cols]
-                
-                # --- PROCESSAMENTO DO SNIPPET (Impute -> Scale -> Split) ---
-                imputer = SimpleImputer(strategy="mean")
-                X_imp = imputer.fit_transform(X)
-                
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X_imp)
-                
-                X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, shuffle=False)
-                
-                for name, model in models.items():
-                    try:
-                        # GridSearch com TimeSeriesSplit
-                        grid = GridSearchCV(model, param_grids[name], cv=tscv, scoring="neg_mean_absolute_error", n_jobs=1)
-                        grid.fit(X_train, y_train)
-                        
-                        best_model = grid.best_estimator_
-                        y_pred = best_model.predict(X_test)
-                        
-                        mae = mean_absolute_error(y_test, y_pred)
-                        r2 = r2_score(y_test, y_pred)
-                        
-                        results1.append({
-                            "Poluente": target, "Modelo": name, 
-                            "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
-                        })
-                    except Exception as e:
-                        st.write(f"Erro em {name}: {e}")
-                prog.progress((i+1)/len(Y_cols))
+            X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
             
-            st.dataframe(pd.DataFrame(results1))
+            for name, model in models.items():
+                try:
+                    # GridSearch com TimeSeriesSplit
+                    grid = GridSearchCV(model, param_grids[name], cv=tscv, scoring="neg_mean_absolute_error", n_jobs=1)
+                    grid.fit(X_train, y_train)
+                    
+                    best_model = grid.best_estimator_
+                    y_pred = best_model.predict(X_test)
+                    
+                    mae = mean_absolute_error(y_test, y_pred)
+                    r2 = r2_score(y_test, y_pred)
+                    
+                    results1.append({
+                        "Poluente": target, "Modelo": name, 
+                        "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
+                    })
+                except Exception as e:
+                    st.write(f"Erro em {name}: {e}")
+            prog.progress((i+1)/len(Y_cols))
+        
+        st.dataframe(pd.DataFrame(results1))
 
 # ==============================================================================
 # 5. SVR AUTOREGRESSIVO
@@ -455,6 +450,7 @@ elif section == "Machine Learning (Avançado/Lags)":
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
+    # 1. Filtro Lisboa DIRETO do df_ar (Sem merge meteo) para ter dados completos
     dfL_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
     dfL_svr['Data'] = dfL_svr['Data'].dt.normalize()
     dfL_svr = dfL_svr.sort_values("Data")
