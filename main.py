@@ -253,7 +253,7 @@ elif section == "EDA":
             st.pyplot(fig5)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (IGUAL AO SNIPPET)
+# 3. MACHINE LEARNING (IGUAL AO SNIPPET + VISUALIZAÇÃO dfL)
 # ==============================================================================
 elif section == "Machine Learning":
     st.header("🤖 Machine Learning (Lisboa)")
@@ -272,13 +272,19 @@ elif section == "Machine Learning":
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
     
-    # Filtrar Lisboa
+    # Filtro Lisboa
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
-    st.dfL
+    
     if dfL.empty:
         st.warning("Sem dados combinados para Lisboa.")
     else:
+        # --- VISUALIZAÇÃO PEDIDA DO DATASET (dfL) ---
+        st.subheader("📊 Dataset de Treino (dfL)")
+        st.markdown("Dados resultantes do merge entre Qualidade do Ar e Meteorologia para Lisboa.")
+        st.dataframe(dfL)
+        
+        # Features EXATAS do teu loop (Só meteo, SEM LAGS AQUI)
         X_cols = [
             "rain", "temperature_2m", "relative_humidity_2m",
             "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -288,35 +294,48 @@ elif section == "Machine Learning":
         
         if st.button("Treinar Modelos (GridSearch)"):
             results = []
+            
+            # PARÂMETROS IGUAIS AO NOTEBOOK
             param_grids = {
                 "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
                 "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
                 "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
             }
+            
             models = {
                 "RandomForest": RandomForestRegressor(random_state=42),
                 "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
                 "MLP": MLPRegressor(random_state=42)
             }
+            
             prog = st.progress(0)
             
             for i, target in enumerate(Y_cols):
                 if target not in dfL.columns: continue
+                
                 y = dfL[target].dropna()
                 X = dfL[X_cols].loc[y.index] # X SEM LAGS AQUI
                 
                 imputer = SimpleImputer(strategy="mean")
                 X_imp = imputer.fit_transform(X)
+                
                 X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
                 
                 for name, model in models.items():
                     try:
                         grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
                         grid.fit(X_train, y_train)
-                        y_pred = grid.best_estimator_.predict(X_test)
+                        
+                        best_model = grid.best_estimator_
+                        y_pred = best_model.predict(X_test)
+                        
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
-                        results.append({"Poluente": target, "Modelo": name, "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2})
+                        
+                        results.append({
+                            "Poluente": target, "Modelo": name, 
+                            "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
+                        })
                     except Exception as e:
                         st.write(f"Erro em {name}: {e}")
                 prog.progress((i+1)/len(Y_cols))
@@ -324,66 +343,61 @@ elif section == "Machine Learning":
             st.dataframe(pd.DataFrame(results))
 
 # ==============================================================================
-# 4. SVR AUTOREGRESSIVO (AGORA CORRETO IGUAL AO SNIPPET)
+# 4. SVR AUTOREGRESSIVO (COM VISUALIZAÇÃO df_class)
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
-    # 1. Obter df_class apenas para Lisboa a partir do df_ar original (SEM METEO para evitar cortes)
-    df_class = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    # 1. Filtro Lisboa e Ordenação (Sem Meteo para não cortar dados)
+    dfL = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("Data")
     
-    # 2. Ordenar por data (Essencial para lags)
-    df_class = df_class.sort_values("Data")
-    st.df_class
-    if not df_class.empty:
-        # REPLICA EXATA DA LOGICA DO SNIPPET
-        df_ar_svr = df_class.copy()
-        
-        # Criar lags
+    if not dfL.empty:
+        # 2. Criar Lags
+        df_class = dfL.copy()
         for lag in range(1, 8):
-            df_ar_svr[f"lag{lag}"] = df_ar_svr["Media_Classe"].shift(lag)
+            df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
         
-        # Dropna
-        df_ar_svr = df_ar_svr.dropna()
+        # 3. Drop NA
+        df_class = df_class.dropna()
         
-        # X e y
-        X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
-        y = df_ar_svr["Media_Classe"]
+        # --- VISUALIZAÇÃO PEDIDA DO DATASET (df_class) ---
+        st.subheader("📊 Dataset com Lags (df_class)")
+        st.markdown("Dados de Lisboa preparados para SVR (lags de 1 a 7 dias).")
+        st.dataframe(df_class)
         
-        # Treino
+        # 4. Definir X e y
+        X_svr = df_class[[f"lag{i}" for i in range(1, 8)]]
+        y_svr = df_class["Media_Classe"]
+        
+        # 5. Treino
         model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
-        model_ar.fit(X, y)
-        y_pred_in = model_ar.predict(X)
+        model_ar.fit(X_svr, y_svr)
+        y_pred = model_ar.predict(X_svr)
         
-        # Métricas
-        st.write("### Métricas SVR")
+        # 6. Métricas
         c1, c2, c3 = st.columns(3)
-        c1.metric("MAE", f"{mean_absolute_error(y, y_pred_in):.4f}")
-        c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred_in)):.4f}")
-        c3.metric("R2", f"{r2_score(y, y_pred_in):.4f}")
+        c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred):.4f}")
+        c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred)):.4f}")
+        c3.metric("R2", f"{r2_score(y_svr, y_pred):.4f}")
         
-        # Mostrar o DataFrame usado (Pedido)
-        st.write("### Dataframe do Modelo (X e y)")
-        st.dataframe(df_ar_svr.head())
-        
-        # Gráfico (Replicando a lógica de slicing do snippet para visualização)
-        # Nota: Usamos df_class['Data'] mas alinhado com o tamanho do y_pred_in
-        dates = df_class["Data"].iloc[len(df_class)-len(y_pred_in):]
-        real_values = df_class["Media_Classe"].iloc[len(df_class)-len(y_pred_in):]
+        # 7. Gráfico
+        # Replicando lógica de slicing do snippet para alinhamento perfeito
+        dates = dfL["Data"].iloc[len(dfL)-len(y_pred):]
+        # Nota: Usamos df_class['Data'] que já teve dropna, então y_pred tem mesmo tamanho
         
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=dates, y=real_values, mode="lines", name="Real", line=dict(color="blue")))
-        fig_svr.add_trace(go.Scatter(x=dates, y=y_pred_in, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
         
         fig_svr.update_layout(
-            title="SVR Autoregressivo - Real vs Previsto", 
+            title="SVR - Real vs Previsto", 
             xaxis_title="Data", 
             yaxis_title="Media da Classe",
             template="plotly_white",
             hovermode="x unified"
         )
         st.plotly_chart(fig_svr, use_container_width=True)
-        
     else:
-        st.warning("Sem dados suficientes para Lisboa.")
+        st.warning("Sem dados suficientes para Lisboa no ficheiro de Qualidade do Ar.")
 
