@@ -5,28 +5,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
-import os
-import time
 
 # Bibliotecas de ML
-from sklearn.model_selection import train_test_split, TimeSeriesSplit, GridSearchCV
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
-from sklearn.svm import SVR, SVC
-from sklearn.neural_network import MLPRegressor, MLPClassifier
+from sklearn.svm import SVR
+from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
 from lightgbm import LGBMRegressor
 
 # Configuração da Página
-st.set_page_config(page_title="Replica Notebook", layout="wide")
+st.set_page_config(page_title="Notebook Replica", layout="wide")
 st.title("Notebook: Análise e Modelação da Qualidade do Ar")
 
 # ==============================================================================
@@ -52,7 +44,7 @@ def processar_dados_notebook():
             if p in dfqualidadear.columns:
                 dfqualidadear[p] = pd.to_numeric(dfqualidadear[p], errors='coerce')
 
-        # Imputação
+        # Imputação (Média Semanal)
         df_medias = dfqualidadear.groupby(['Distrito', 'Ano', 'Semana'])[poluentes].mean().reset_index()
         dfqualidadear = dfqualidadear.merge(df_medias, on=['Distrito', 'Ano', 'Semana'], suffixes=('', '_media'), how='left')
         for p in poluentes:
@@ -133,23 +125,20 @@ def processar_dados_notebook():
         st.error(f"Erro no processamento de 2023: {e}")
         df2023_mediaclean = None
 
-    # --- C. METEOROLOGIA (CORREÇÃO DE ERRO) ---
+    # --- C. METEOROLOGIA (CORREÇÃO) ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # 1. Converter para datetime imediatamente
-        df_meteo["date"] = pd.to_datetime(df_meteo["date"], errors='coerce')
-        # 2. Remover Timezone se existir
-        if df_meteo["date"].dt.tz is not None:
-            df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
         
-        # Agora já podemos usar .dt com segurança
-        df_meteo["distrito"] = df_meteo["distrito"].astype(str).str.strip().str.title()
+        # Correção Robusta: Converter para UTC primeiro para evitar erros, depois remover TZ
+        df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
+        df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
         
-        # Verificar se a conversão correu bem (remover NaT se houver)
-        df_meteo = df_meteo.dropna(subset=['date'])
-        
+        # Normalizar distrito
+        if 'distrito' in df_meteo.columns:
+            df_meteo["distrito"] = df_meteo["distrito"].astype(str).str.strip().str.title()
+            
     except Exception as e:
-        st.warning(f"Erro na meteo: {e}")
+        st.warning(f"Erro na meteorologia: {e}")
         df_meteo = None
 
     return df_ar, df2023_mediaclean, df_meteo, distritos_desejados
@@ -239,8 +228,8 @@ if df2023_clean is not None:
 # PREPARAÇÃO PARA MACHINE LEARNING (CORREÇÃO NameError)
 # ==============================================================================
 
-# Inicializar df_combinadometeoqualar como None para segurança
-df_combinadometeoqualar = None
+# Inicializar df_combinadometeoqualar como VAZIO para segurança
+df_combinadometeoqualar = pd.DataFrame()
 
 if df_meteo is not None:
     st.subheader("Correlações: Meteorologia vs Qualidade do Ar (2025)")
@@ -255,34 +244,37 @@ if df_meteo is not None:
     )
     
     cols_meteo = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
-    # Dropna para garantir correlação válida e evitar erro
-    df_corr_input = df_combinadometeoqualar[cols_meteo].dropna()
     
-    if not df_corr_input.empty:
-        fig5 = plt.figure(figsize=(10, 8))
-        sns.heatmap(df_corr_input.corr(), annot=True, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
-        st.pyplot(fig5)
-        
-        st.subheader("Correlações Detalhadas (Componentes)")
-        colunas_meteo = ["temperature_2m", "relative_humidity_2m", "rain", "temperature_80m", "wind_speed_80m", "wind_direction_80m", "temperature_2m_max", "temperature_2m_min", "uv_index_max"]
-        colunas_disp = [c for c in colunas_meteo + poluentesclean if c in df_combinadometeoqualar.columns]
-        
-        corr_full = df_combinadometeoqualar[colunas_disp].corr()
-        corr_sub = corr_full.loc[[c for c in colunas_meteo if c in corr_full.index], [c for c in poluentesclean if c in corr_full.columns]]
-        
-        fig6 = plt.figure(figsize=(10, 8))
-        sns.heatmap(corr_sub, annot=True, fmt=".2f", cmap="coolwarm", center=0)
-        st.pyplot(fig6)
+    # Check if cols exist
+    cols_exist = [c for c in cols_meteo if c in df_combinadometeoqualar.columns]
+    
+    if len(cols_exist) > 1:
+        df_corr_input = df_combinadometeoqualar[cols_exist].dropna()
+        if not df_corr_input.empty:
+            fig5 = plt.figure(figsize=(10, 8))
+            sns.heatmap(df_corr_input.corr(), annot=True, cmap="coolwarm", fmt=".2f", vmin=-1, vmax=1)
+            st.pyplot(fig5)
+            
+            st.subheader("Correlações Detalhadas (Componentes)")
+            colunas_meteo = ["temperature_2m", "relative_humidity_2m", "rain", "temperature_80m", "wind_speed_80m", "wind_direction_80m", "temperature_2m_max", "temperature_2m_min", "uv_index_max"]
+            colunas_disp = [c for c in colunas_meteo + poluentesclean if c in df_combinadometeoqualar.columns]
+            
+            corr_full = df_combinadometeoqualar[colunas_disp].corr()
+            corr_sub = corr_full.loc[[c for c in colunas_meteo if c in corr_full.index], [c for c in poluentesclean if c in corr_full.columns]]
+            
+            fig6 = plt.figure(figsize=(10, 8))
+            sns.heatmap(corr_sub, annot=True, fmt=".2f", cmap="coolwarm", center=0)
+            st.pyplot(fig6)
     else:
-        st.warning("Não há dados suficientes cruzados entre Meteo e Ar para gerar correlações.")
+        st.warning("Colunas de meteorologia não encontradas após o merge.")
 
 # ==============================================================================
 # 3. MACHINE LEARNING (AGORA PROTEGIDO)
 # ==============================================================================
 st.write("--- 3. Machine Learning ---")
 
-# Só entra aqui se o merge anterior tiver funcionado com sucesso
-if df_combinadometeoqualar is not None and not df_combinadometeoqualar.empty:
+# Só entra aqui se o merge anterior tiver funcionado com sucesso e tiver dados
+if not df_combinadometeoqualar.empty:
     
     df_Model = df_combinadometeoqualar.dropna().copy()
     
@@ -392,8 +384,6 @@ if df_combinadometeoqualar is not None and not df_combinadometeoqualar.empty:
 else:
     st.error("""
     ⚠️ Não foi possível carregar os dados de Meteorologia corretamente ou cruzá-los com a Qualidade do Ar.
-    
-    Verifique:
-    1. Se o ficheiro 'dataset_meteorologico_portugal.csv' está no GitHub.
-    2. Se os nomes dos distritos batem certo (Aveiro vs aveiro).
+    A análise de Machine Learning não pode ser executada sem estes dados.
+    Verifique se o ficheiro 'dataset_meteorologico_portugal.csv' está válido no GitHub.
     """)
