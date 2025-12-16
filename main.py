@@ -53,6 +53,141 @@ section = st.sidebar.radio(
     ]
 )
 
+
+# =============================
+# PROCESSING
+# =============================
+
+
+def processar_dados_notebook():
+    st.write("--- 1. Carregamento e Processamento de Dados ---")
+    
+    # --- A. DADOS 2025 ---
+    try:
+        dfqualidadear = pd.read_excel("QualidadeAr2.xlsx")
+        if 'Coluna1' in dfqualidadear.columns:
+            dfqualidadear = dfqualidadear.rename(columns={"Coluna1":"Distrito"})
+        if "Tipo" in dfqualidadear.columns: dfqualidadear = dfqualidadear.drop(["Tipo", "Zona"], axis=1)
+        
+        dfqualidadear['Data'] = pd.to_datetime(dfqualidadear['Data'], dayfirst=True, errors='coerce')
+        dfqualidadear['Semana'] = dfqualidadear['Data'].dt.isocalendar().week
+        dfqualidadear['Ano'] = dfqualidadear['Data'].dt.year
+        
+        poluentes = ['C6H6', 'CO', 'NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
+        for p in poluentes:
+            if p in dfqualidadear.columns:
+                dfqualidadear[p] = pd.to_numeric(dfqualidadear[p], errors='coerce')
+
+        # Imputação (Média Semanal)
+        df_medias = dfqualidadear.groupby(['Distrito', 'Ano', 'Semana'])[poluentes].mean().reset_index()
+        dfqualidadear = dfqualidadear.merge(df_medias, on=['Distrito', 'Ano', 'Semana'], suffixes=('', '_media'), how='left')
+        for p in poluentes:
+            if f'{p}_media' in dfqualidadear.columns:
+                dfqualidadear[p] = dfqualidadear[p].fillna(dfqualidadear[f'{p}_media'])
+        
+        df_mediaar = dfqualidadear.groupby(["Data","Distrito","Semana","Ano"])[poluentes].mean().reset_index()
+
+        # Classificação
+        intervalos = {
+            "PM10": [(101, 1200), (51, 100), (36, 50), (21, 35), (0, 20)],
+            "PM2.5": [(51, 800), (26, 50), (21, 25), (11, 20), (0, 10)],
+            "NO2": [(401, 1000), (201, 400), (101, 200), (41, 100), (0, 40)],
+            "O3": [(241, 600), (181, 240), (101, 180), (81, 100), (0, 80)],
+            "SO2": [(501, 1250), (351, 500), (201, 350), (101, 200), (0, 100)]
+        }
+
+        def classificar_proximo(valor, intervalos_dict):
+            if pd.isna(valor): return np.nan
+            distancias = []
+            for i, (minimo, maximo) in enumerate(intervalos_dict):
+                centro = (minimo + maximo) / 2
+                distancias.append((abs(valor - centro), i + 1)) 
+            return min(distancias)[1]
+
+        for poluente in intervalos:
+            df_mediaar[f'{poluente}_classe'] = df_mediaar[poluente].apply(lambda x: classificar_proximo(x, intervalos[poluente]))
+            
+        df_ar = df_mediaar.drop(['C6H6', 'CO'], axis=1, errors='ignore')
+        distritos_desejados = ['Aveiro', 'Lisboa', 'Açores', 'Setúbal', 'Leiria', 'Madeira', 'Santarém']
+        df_ar = df_ar[df_ar['Distrito'].isin(distritos_desejados)].copy()
+        
+        colunas_classes = [c for c in df_ar.columns if c.endswith('_classe')]
+        df_ar['Media_Classe'] = df_ar[colunas_classes].mean(axis=1)
+        
+    except Exception as e:
+        st.error(f"Erro no processamento de 2025: {e}")
+        return None, None, None, None
+
+    # --- B. DADOS 2023 ---
+    try:
+        dfqualidadear2023 = pd.read_excel("Qualar2023.xlsx")
+        dfqualidadear2023.columns = dfqualidadear2023.columns.str.strip()
+        if 'Local' in dfqualidadear2023.columns: dfqualidadear2023 = dfqualidadear2023.drop('Local', axis=1)
+        
+        if 'Data-Hora' in dfqualidadear2023.columns:
+            dfqualidadear2023['Data-Hora'] = pd.to_datetime(dfqualidadear2023['Data-Hora'])
+            dfqualidadear2023['Semana'] = dfqualidadear2023['Data-Hora'].dt.isocalendar().week
+            dfqualidadear2023['Ano'] = dfqualidadear2023['Data-Hora'].dt.year
+        
+        for p in poluentes:
+            if p in dfqualidadear2023.columns:
+                dfqualidadear2023[p] = pd.to_numeric(dfqualidadear2023[p], errors='coerce')
+
+        df_semanalar2023 = dfqualidadear2023.groupby(['Distrito', 'Ano', 'Semana'])[poluentes].mean(numeric_only=True).reset_index()
+        
+        dfqualidadear2023 = dfqualidadear2023.merge(
+            df_semanalar2023, on=['Distrito', 'Ano', 'Semana'], suffixes=('', '_media'), how='left'
+        )
+        for p in poluentes:
+            if f'{p}_media' in dfqualidadear2023.columns:
+                dfqualidadear2023[p] = dfqualidadear2023[p].fillna(dfqualidadear2023[f'{p}_media'])
+        
+        df2023_media = dfqualidadear2023.groupby(["Distrito", "Data-Hora","Semana","Ano"])[poluentes].mean(numeric_only=True).reset_index()
+        
+        for poluente in intervalos:
+            df2023_media[f'{poluente}_classe'] = df2023_media[poluente].apply(lambda x: classificar_proximo(x, intervalos[poluente]))
+        
+        colunas_classes = [c for c in df2023_media.columns if c.endswith('_classe')]
+        df2023_media['Media_Classe'] = df2023_media[colunas_classes].mean(axis=1)
+        
+        df2023_mediaclean = df2023_media.drop(['C6H6', 'CO'], axis=1, errors='ignore')
+        df2023_mediaclean = df2023_mediaclean[df2023_mediaclean['Distrito'].isin(distritos_desejados)].copy()
+        df2023_mediaclean['Data'] = pd.to_datetime(df2023_mediaclean['Data-Hora']).dt.date
+        df2023_mediaclean['Data'] = pd.to_datetime(df2023_mediaclean['Data']) 
+        
+    except Exception as e:
+        st.error(f"Erro no processamento de 2023: {e}")
+        df2023_mediaclean = None
+
+    # --- C. METEOROLOGIA (CORREÇÃO) ---
+    try:
+        df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
+        
+        # Correção Robusta: Converter para UTC primeiro para evitar erros, depois remover TZ
+        df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
+        df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
+        
+        # Normalizar distrito
+        if 'distrito' in df_meteo.columns:
+            df_meteo["distrito"] = df_meteo["distrito"].astype(str).str.strip().str.title()
+            
+    except Exception as e:
+        st.warning(f"Erro na meteorologia: {e}")
+        df_meteo = None
+
+    return df_ar, df2023_mediaclean, df_meteo, distritos_desejados
+
+
+
+
+
+
+
+
+
+
+
+
 # =============================
 # DATASETS
 # =============================
@@ -176,4 +311,5 @@ elif section == "SVR Autoregressivo":
     # Carregar gráfico já gerado
     with open("grafico_svr.html", "r") as f:
         st.components.v1.html(f.read(), height=600)
+
 
