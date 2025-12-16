@@ -22,7 +22,7 @@ st.set_page_config(page_title="Replica Notebook", layout="wide")
 st.title("Notebook: Análise e Modelação da Qualidade do Ar")
 
 # ==============================================================================
-# 1. CARREGAMENTO E PROCESSAMENTO (IGUAL AO ANTERIOR)
+# 1. CARREGAMENTO E PROCESSAMENTO (Robusto)
 # ==============================================================================
 
 @st.cache_data
@@ -122,10 +122,9 @@ def processar_dados_notebook():
     except Exception as e:
         df2023_mediaclean = None
 
-    # --- C. METEOROLOGIA (CORREÇÃO DE LEITURA) ---
+    # --- C. METEOROLOGIA ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # Forçar UTC=True para evitar erros de parser, depois remover timezone
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
         
@@ -150,7 +149,7 @@ if df_ar is None:
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
 # ==============================================================================
-# 2. EDA (GRÁFICOS)
+# 2. EDA
 # ==============================================================================
 st.header("2. Análise Exploratória (EDA)")
 
@@ -172,7 +171,6 @@ if df2023_clean is not None:
     df2023_periodo["Ano"] = 2023
     df2025_periodo = df_ar.copy()
     df2025_periodo["Ano"] = 2025
-    
     df2023_periodo["Distrito"] = df2023_periodo["Distrito"].str.strip().str.title()
     df2025_periodo["Distrito"] = df2025_periodo["Distrito"].str.strip().str.title()
     
@@ -223,7 +221,6 @@ if df2023_clean is not None:
 # PREPARAÇÃO PARA MACHINE LEARNING
 # ==============================================================================
 
-# Inicializar Vazio
 df_combinadometeoqualar = pd.DataFrame()
 
 if df_meteo is not None:
@@ -233,14 +230,12 @@ if df_meteo is not None:
     df_ar_m["Dia"] = df_ar_m["Data"].dt.date
     df_meteo["Dia"] = df_meteo["date"].dt.date
     
-    # Merge vital
     df_combinadometeoqualar = pd.merge(
         df_ar_m, df_meteo, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left"
     )
     
     cols_meteo = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
     
-    # Check if cols exist
     cols_exist = [c for c in cols_meteo if c in df_combinadometeoqualar.columns]
     
     if len(cols_exist) > 1:
@@ -262,22 +257,27 @@ if df_meteo is not None:
             st.pyplot(fig6)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (REPLICA EXATA DO SNIPPET)
+# 3. MACHINE LEARNING (AGORA IGUAL AO SNIPPET)
 # ==============================================================================
-st.header("3. Machine Learning (Replica Notebook)")
+st.write("--- 3. Machine Learning ---")
 
 if not df_combinadometeoqualar.empty:
     
     df_Model = df_combinadometeoqualar.dropna().copy()
     
-    # Filtrar Lisboa
+    # Filtrar Lisboa e ORDENAR POR DATA (Vital para o gráfico SVR)
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     
     if not dfL.empty:
         dfL["date"] = pd.to_datetime(dfL["date"])
         dfL = dfL.sort_values("date").reset_index(drop=True)
 
-        # FEATURES DO NOTEBOOK ORIGINAL (SEM LAGS AQUI)
+        # ----------------------------------------------------------------------
+        # A. REGRESSÃO (Loop do Notebook - USANDO APENAS METEOROLOGIA BASICA)
+        # ----------------------------------------------------------------------
+        # NOTA: Aqui NÃO usamos lags, porque no teu notebook o snippet mostrava apenas meteorologia
+        # Resultando em R2 negativos/baixos, o que é o comportamento esperado.
+        
         X_cols = [
             "rain", "temperature_2m", "relative_humidity_2m",
             "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -287,17 +287,16 @@ if not df_combinadometeoqualar.empty:
 
         st.info("Treino de Modelos: Pode demorar alguns minutos. Clique abaixo.")
 
-        if st.button("Executar Treino (Regressão)"):
+        if st.button("Executar Treino (Regressão e SVR)"):
             
+            # --- LOOP DE REGRESSÃO ---
             results = []
             
-            # Parametros aproximados do teu notebook
             param_grids = {
-                "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
+                "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]}, 
                 "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
                 "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300]}
             }
-            
             models_dict = {
                 "RandomForest": RandomForestRegressor(random_state=42),
                 "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
@@ -307,20 +306,21 @@ if not df_combinadometeoqualar.empty:
             progress_bar = st.progress(0)
             total_steps = len(Y_cols)
             
-            # LOOP DE REGRESSÃO (EXATAMENTE COMO NO SNIPPET)
             for i, target in enumerate(Y_cols):
                 if target not in dfL.columns: continue
                 
                 y = dfL[target].dropna()
-                # USAR APENAS X_COLS (METEO BASE) - SEM LAGS
-                X = dfL[X_cols].loc[y.index]
+                X = dfL[X_cols].loc[y.index] # X SEM LAGS (Como no snippet)
                 
-                # Split sem Shuffle (Séries Temporais)
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+                imputer = SimpleImputer(strategy="mean")
+                X_imp = imputer.fit_transform(X)
+                
+                # Split sem shuffle
+                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
                 
                 for name, model in models_dict.items():
                     try:
-                        # GridSearch
+                        # n_jobs=1 para poupar memória na Cloud
                         grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
                         grid.fit(X_train, y_train)
                         
@@ -338,46 +338,54 @@ if not df_combinadometeoqualar.empty:
                             "R2": r2
                         })
                     except Exception as e:
-                        st.warning(f"Erro no modelo {name} para {target}: {e}")
+                        st.warning(f"Erro no modelo {name}: {e}")
                 
                 progress_bar.progress((i + 1) / total_steps)
                     
-            st.write("### Resultados Regressão (Base Meteorológica)")
+            st.write("### Resultados Regressão (Meteorologia apenas)")
             st.dataframe(pd.DataFrame(results))
 
-        # --- PARTE SEPARADA: SVR AUTOREGRESSIVO (COM LAGS) ---
-        # No teu notebook isto estava numa célula separada mais à frente
-        st.markdown("---")
-        st.header("SVR Autoregressivo (Previsão com Histórico)")
-        
-        # Aqui sim, criamos lags, porque o SVR Autoregressivo depende disso
-        df_class = dfL.copy()
-        for lag in range(1, 8):
-            df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
-        
-        df_class = df_class.dropna()
-        svr_cols = [f"lag{i}" for i in range(1, 8)]
-        
-        if not df_class.empty:
-            X_svr = df_class[svr_cols]
-            y_svr = df_class["Media_Classe"]
+            # ------------------------------------------------------------------
+            # B. SVR AUTOREGRESSIVO (Previsão com Histórico)
+            # ------------------------------------------------------------------
+            st.markdown("---")
+            st.header("SVR Autoregressivo (Media_Classe)")
             
-            # Usar parâmetros fixos do teu notebook
-            model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
-            model_ar.fit(X_svr, y_svr)
-            y_pred_in = model_ar.predict(X_svr)
+            df_class = dfL.copy()
+            # Ordenar explicitamente para o gráfico não sair riscado
+            df_class = df_class.sort_values("date")
             
-            c1, c2, c3 = st.columns(3)
-            c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred_in):.4f}")
-            c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred_in)):.4f}")
-            c3.metric("R2", f"{r2_score(y_svr, y_pred_in):.4f}")
+            for lag in range(1, 8):
+                df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
             
-            fig_svr = go.Figure()
-            fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="navy")))
-            fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred_in, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
-            fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
-            st.plotly_chart(fig_svr, use_container_width=True)
+            df_class = df_class.dropna()
             
+            svr_cols = [f"lag{i}" for i in range(1, 8)]
+            
+            if not df_class.empty:
+                X_svr = df_class[svr_cols]
+                y_svr = df_class["Media_Classe"]
+                
+                # Treino
+                model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
+                model_ar.fit(X_svr, y_svr)
+                y_pred_in = model_ar.predict(X_svr)
+                
+                # Métricas
+                c1, c2, c3 = st.columns(3)
+                c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred_in):.4f}")
+                c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred_in)):.4f}")
+                c3.metric("R2", f"{r2_score(y_svr, y_pred_in):.4f}")
+                
+                # Gráfico CORRIGIDO (Usando datas ordenadas)
+                fig_svr = go.Figure()
+                fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
+                fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred_in, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+                
+                fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
+                st.plotly_chart(fig_svr, use_container_width=True)
+            else:
+                st.warning("Dados insuficientes para SVR.")
     else:
         st.warning("Não há dados de Lisboa no dataset combinado.")
 else:
