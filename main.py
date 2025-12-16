@@ -253,29 +253,43 @@ elif section == "EDA":
             st.pyplot(fig5)
 
 # ==============================================================================
-# 3. MACHINE LEARNING (AQUELA TABELA COM RESULTADOS "MAUS")
+# 3. MACHINE LEARNING (AGORA IGUAL AO TEU SNIPPET)
 # ==============================================================================
 elif section == "Machine Learning":
-    st.header("🤖 Machine Learning (Regressão Meteorológica)")
-    st.markdown("Previsão dos poluentes usando **apenas** variáveis meteorológicas (sem histórico/lags).")
+    st.header("🤖 Machine Learning (Lisboa)")
+    st.markdown("Resultados da Regressão com GridSearch (sem Lags, apenas Meteo base).")
     
     if df_meteo is None:
         st.error("Sem dados de meteorologia.")
         st.stop()
         
-    # Preparar Dados
-    df_ar_m = df_ar.copy()
-    df_ar_m["Dia"] = df_ar_m["Data"].dt.date
-    df_meteo["Dia"] = df_meteo["date"].dt.date
-    df_merged = pd.merge(df_ar_m, df_meteo, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left")
+    # --- PREPARAÇÃO DOS DADOS IGUAL AO NOTEBOOK ---
+    # 1. Renomear colunas para uniformizar (Passo crucial do teu notebook)
+    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     
-    # Filtrar Lisboa e Ordenar
-    dfL = df_merged[df_merged["distrito"] == "Lisboa"].copy().dropna()
+    # 2. Filtrar distritos válidos na meteo
+    distritos_validos = df_ar_ml['distrito'].unique()
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)]
+    
+    # 3. Tratamento de data e group by na meteo (conforme teu snippet)
+    # Converter para diário (média por dia)
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.floor('D')
+    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
+    
+    # 4. Merge pelos campos comuns: 'date' e 'distrito'
+    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
+    
+    # 5. Drop NA
+    df_Model = df_merged.dropna().copy()
+    
+    # 6. Filtrar Lisboa
+    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("date").reset_index(drop=True)
     
     if dfL.empty:
         st.warning("Sem dados combinados para Lisboa.")
     else:
-        # Features EXATAS do teu loop (Só meteo)
+        # Features EXATAS do teu loop (Só meteo, SEM LAGS AQUI)
         X_cols = [
             "rain", "temperature_2m", "relative_humidity_2m",
             "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -285,11 +299,25 @@ elif section == "Machine Learning":
         
         if st.button("Treinar Modelos (GridSearch)"):
             results = []
+            
+            # PARÂMETROS IGUAIS AO NOTEBOOK
             param_grids = {
-                "RandomForest": {"n_estimators": [100], "max_depth": [5, 10]}, 
-                "LightGBM": {"n_estimators": [100], "learning_rate": [0.1]},
-                "MLP": {"hidden_layer_sizes": [(64,)], "max_iter": [200]}
+                "RandomForest": {
+                    "n_estimators": [100, 200],
+                    "max_depth": [5, 10, None]
+                },
+                "LightGBM": {
+                    "n_estimators": [100, 200],
+                    "num_leaves": [31, 50],
+                    "learning_rate": [0.05, 0.1]
+                },
+                "MLP": {
+                    "hidden_layer_sizes": [(64,), (64,32)],
+                    "alpha": [0.0001, 0.001],
+                    "max_iter": [300, 500]
+                }
             }
+            
             models = {
                 "RandomForest": RandomForestRegressor(random_state=42),
                 "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
@@ -300,16 +328,25 @@ elif section == "Machine Learning":
             
             for i, target in enumerate(Y_cols):
                 if target not in dfL.columns: continue
-                y = dfL[target]
-                X = dfL[X_cols] # Sem Lags
                 
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+                y = dfL[target].dropna()
+                X = dfL[X_cols].loc[y.index] # X SEM LAGS AQUI
+                
+                # Imputer (Como no notebook)
+                imputer = SimpleImputer(strategy="mean")
+                X_imp = imputer.fit_transform(X)
+                
+                # Split sem shuffle
+                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
                 
                 for name, model in models.items():
                     try:
-                        grid = GridSearchCV(model, param_grids[name], cv=2, scoring="neg_mean_absolute_error", n_jobs=1)
+                        # GridSearch igual ao notebook (cv=3)
+                        grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
                         grid.fit(X_train, y_train)
-                        y_pred = grid.predict(X_test)
+                        
+                        best_model = grid.best_estimator_
+                        y_pred = best_model.predict(X_test)
                         
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
@@ -318,7 +355,8 @@ elif section == "Machine Learning":
                             "Poluente": target, "Modelo": name, 
                             "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2
                         })
-                    except: pass
+                    except Exception as e:
+                        st.write(f"Erro em {name}: {e}")
                 prog.progress((i+1)/len(Y_cols))
             
             st.dataframe(pd.DataFrame(results))
@@ -329,20 +367,23 @@ elif section == "Machine Learning":
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
     
-    # Recriar dataset combinado
     if df_meteo is None: st.stop()
-    df_ar_m = df_ar.copy()
-    df_ar_m["Dia"] = df_ar_m["Data"].dt.date
-    df_meteo["Dia"] = df_meteo["date"].dt.date
-    df_merged = pd.merge(df_ar_m, df_meteo, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left")
     
-    # Filtro Lisboa + ORDENAÇÃO CRÍTICA
-    dfL = df_merged[df_merged["distrito"] == "Lisboa"].copy()
-    dfL["Data"] = pd.to_datetime(dfL["Data"])
-    dfL = dfL.sort_values("Data") # Ordenar para o gráfico sair bem
+    # REPETIR A MESMA PREPARAÇÃO DE DADOS PARA GARANTIR CONSISTÊNCIA
+    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
+    distritos_validos = df_ar_ml['distrito'].unique()
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)]
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.floor('D')
+    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
+    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
+    df_Model = df_merged.dropna().copy()
+    
+    # Filtro Lisboa e Ordenação
+    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("date").reset_index(drop=True)
     
     if not dfL.empty:
-        # Criar Lags
+        # AQUI SIM, CRIAMOS OS LAGS (IGUAL AO SEU CÓDIGO FINAL DE SVR)
         df_class = dfL.copy()
         for lag in range(1, 8):
             df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
@@ -363,8 +404,8 @@ elif section == "SVR Autoregressivo":
         
         # Gráfico
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
-        fig_svr.add_trace(go.Scatter(x=df_class["Data"], y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+        fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
         fig_svr.update_layout(title="SVR - Real vs Previsto", xaxis_title="Data", template="plotly_white")
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
