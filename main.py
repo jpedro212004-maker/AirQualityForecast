@@ -160,14 +160,14 @@ if section == "Datasets":
     st.header("📂 Datasets Utilizados")
     if df_meteo is not None:
         st.subheader("Meteorologia")
-        st.dataframe(df_meteo.head())
+        st.dataframe(df_meteo)
     
     st.subheader("Qualidade do Ar 2025 (Processado)")
-    st.dataframe(df_ar.head())
+    st.dataframe(df_ar)
 
     if df2023_clean is not None:
         st.subheader("Qualidade do Ar 2023 (Processado)")
-        st.dataframe(df2023_clean.head())
+        st.dataframe(df2023_clean)
 
 # ==============================================================================
 # 2. EDA
@@ -401,5 +401,6 @@ elif section == "SVR Autoregressivo":
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
         st.warning("Sem dados suficientes para Lisboa.")
+
 
 
