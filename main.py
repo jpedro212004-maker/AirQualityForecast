@@ -18,16 +18,15 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, E
 from lightgbm import LGBMRegressor
 
 # Configuração da Página
-st.set_page_config(page_title="Notebook Replica", layout="wide")
+st.set_page_config(page_title="Replica Notebook", layout="wide")
 st.title("Notebook: Análise e Modelação da Qualidade do Ar")
 
 # ==============================================================================
-# 1. FUNÇÕES DE PROCESSAMENTO
+# 1. CARREGAMENTO E PROCESSAMENTO (IGUAL AO ANTERIOR)
 # ==============================================================================
 
+@st.cache_data
 def processar_dados_notebook():
-    st.write("--- 1. Carregamento e Processamento de Dados ---")
-    
     # --- A. DADOS 2025 ---
     try:
         dfqualidadear = pd.read_excel("QualidadeAr2.xlsx")
@@ -81,8 +80,7 @@ def processar_dados_notebook():
         df_ar['Media_Classe'] = df_ar[colunas_classes].mean(axis=1)
         
     except Exception as e:
-        st.error(f"Erro no processamento de 2025: {e}")
-        return None, None, None, None
+        return None, None, None
 
     # --- B. DADOS 2023 ---
     try:
@@ -122,34 +120,31 @@ def processar_dados_notebook():
         df2023_mediaclean['Data'] = pd.to_datetime(df2023_mediaclean['Data']) 
         
     except Exception as e:
-        st.error(f"Erro no processamento de 2023: {e}")
         df2023_mediaclean = None
 
-    # --- C. METEOROLOGIA (CORREÇÃO) ---
+    # --- C. METEOROLOGIA (CORREÇÃO DE LEITURA) ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        
-        # Correção Robusta: Converter para UTC primeiro para evitar erros, depois remover TZ
+        # Forçar UTC=True para evitar erros de parser, depois remover timezone
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
         
-        # Normalizar distrito
         if 'distrito' in df_meteo.columns:
             df_meteo["distrito"] = df_meteo["distrito"].astype(str).str.strip().str.title()
             
     except Exception as e:
-        st.warning(f"Erro na meteorologia: {e}")
         df_meteo = None
 
-    return df_ar, df2023_mediaclean, df_meteo, distritos_desejados
+    return df_ar, df2023_mediaclean, df_meteo
 
 # ==============================================================================
 # EXECUÇÃO DO PIPELINE
 # ==============================================================================
 
-df_ar, df2023_clean, df_meteo, distritos_desejados = processar_dados_notebook()
+df_ar, df2023_clean, df_meteo = processar_dados_notebook()
 
 if df_ar is None:
+    st.error("Erro crítico ao carregar dados de 2025.")
     st.stop()
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
@@ -157,7 +152,7 @@ poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 # ==============================================================================
 # 2. EDA (GRÁFICOS)
 # ==============================================================================
-st.write("--- 2. Análise Exploratória (EDA) ---")
+st.header("2. Análise Exploratória (EDA)")
 
 st.subheader("Componentes Diários 2025")
 df_por_dia = df_ar.groupby("Data")[poluentesclean].mean().reset_index()
@@ -225,10 +220,10 @@ if df2023_clean is not None:
     st.pyplot(fig4)
 
 # ==============================================================================
-# PREPARAÇÃO PARA MACHINE LEARNING (CORREÇÃO NameError)
+# PREPARAÇÃO PARA MACHINE LEARNING
 # ==============================================================================
 
-# Inicializar df_combinadometeoqualar como VAZIO para segurança
+# Inicializar Vazio
 df_combinadometeoqualar = pd.DataFrame()
 
 if df_meteo is not None:
@@ -238,7 +233,7 @@ if df_meteo is not None:
     df_ar_m["Dia"] = df_ar_m["Data"].dt.date
     df_meteo["Dia"] = df_meteo["date"].dt.date
     
-    # Criar a variável AQUI para estar disponível depois
+    # Merge vital
     df_combinadometeoqualar = pd.merge(
         df_ar_m, df_meteo, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left"
     )
@@ -265,15 +260,12 @@ if df_meteo is not None:
             fig6 = plt.figure(figsize=(10, 8))
             sns.heatmap(corr_sub, annot=True, fmt=".2f", cmap="coolwarm", center=0)
             st.pyplot(fig6)
-    else:
-        st.warning("Colunas de meteorologia não encontradas após o merge.")
 
 # ==============================================================================
-# 3. MACHINE LEARNING (AGORA PROTEGIDO)
+# 3. MACHINE LEARNING (REPLICA EXATA DO SNIPPET)
 # ==============================================================================
-st.write("--- 3. Machine Learning ---")
+st.header("3. Machine Learning (Replica Notebook)")
 
-# Só entra aqui se o merge anterior tiver funcionado com sucesso e tiver dados
 if not df_combinadometeoqualar.empty:
     
     df_Model = df_combinadometeoqualar.dropna().copy()
@@ -285,35 +277,27 @@ if not df_combinadometeoqualar.empty:
         dfL["date"] = pd.to_datetime(dfL["date"])
         dfL = dfL.sort_values("date").reset_index(drop=True)
 
-        X_cols_base = ["rain", "temperature_2m", "relative_humidity_2m", "temperature_80m", "wind_speed_80m", "wind_direction_80m", "temperature_2m_max", "temperature_2m_min"]
+        # FEATURES DO NOTEBOOK ORIGINAL (SEM LAGS AQUI)
+        X_cols = [
+            "rain", "temperature_2m", "relative_humidity_2m",
+            "temperature_80m", "wind_speed_80m", "wind_direction_80m",
+            "temperature_2m_max", "temperature_2m_min"
+        ]
         Y_cols = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
 
-        for col in Y_cols:
-            if col in dfL.columns:
-                dfL[f"{col}_lag1"] = dfL[col].shift(1)
-                dfL[f"{col}_lag2"] = dfL[col].shift(2)
-                dfL[f"{col}_roll3"] = dfL[col].rolling(3).mean()
+        st.info("Treino de Modelos: Pode demorar alguns minutos. Clique abaixo.")
 
-        dfL["month"] = dfL["date"].dt.month
-        dfL["weekday"] = dfL["date"].dt.weekday
-
-        X_cols_final = X_cols_base + [f"{c}_lag1" for c in Y_cols] + [f"{c}_lag2" for c in Y_cols] + [f"{c}_roll3" for c in Y_cols] + ["month", "weekday"]
-        
-        # Filtra colunas que realmente existem
-        X_cols_final = [c for c in X_cols_final if c in dfL.columns]
-
-        st.markdown("### Treino de Modelos para Lisboa")
-        st.info("O treino dos modelos (GridSearch) é computacionalmente pesado. Clique no botão abaixo para executar.")
-
-        if st.button("Executar Treino de Modelos (Pode demorar)"):
+        if st.button("Executar Treino (Regressão)"):
             
-            # --- 1. Regressão ---
             results = []
+            
+            # Parametros aproximados do teu notebook
             param_grids = {
-                "RandomForest": {"n_estimators": [50], "max_depth": [5, 10]}, 
-                "LightGBM": {"n_estimators": [50], "learning_rate": [0.1]},
-                "MLP": {"hidden_layer_sizes": [(32,)], "max_iter": [200]}
+                "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
+                "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
+                "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300]}
             }
+            
             models_dict = {
                 "RandomForest": RandomForestRegressor(random_state=42),
                 "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
@@ -323,67 +307,78 @@ if not df_combinadometeoqualar.empty:
             progress_bar = st.progress(0)
             total_steps = len(Y_cols)
             
+            # LOOP DE REGRESSÃO (EXATAMENTE COMO NO SNIPPET)
             for i, target in enumerate(Y_cols):
                 if target not in dfL.columns: continue
                 
                 y = dfL[target].dropna()
-                X = dfL[X_cols_final].loc[y.index]
+                # USAR APENAS X_COLS (METEO BASE) - SEM LAGS
+                X = dfL[X_cols].loc[y.index]
                 
-                imputer = SimpleImputer(strategy="mean")
-                X_imp = imputer.fit_transform(X)
-                X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
+                # Split sem Shuffle (Séries Temporais)
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
                 
                 for name, model in models_dict.items():
                     try:
-                        grid = GridSearchCV(model, param_grids[name], cv=2, scoring="neg_mean_absolute_error", n_jobs=1)
+                        # GridSearch
+                        grid = GridSearchCV(model, param_grids[name], cv=3, scoring="neg_mean_absolute_error", n_jobs=1)
                         grid.fit(X_train, y_train)
-                        y_pred = grid.predict(X_test)
+                        
+                        best_model = grid.best_estimator_
+                        y_pred = best_model.predict(X_test)
+                        
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
-                        results.append({"Poluente": target, "Modelo": name, "MAE": mae, "R2": r2})
+                        
+                        results.append({
+                            "Poluente": target,
+                            "Modelo": name,
+                            "BestParams": str(grid.best_params_),
+                            "MAE": mae,
+                            "R2": r2
+                        })
                     except Exception as e:
                         st.warning(f"Erro no modelo {name} para {target}: {e}")
                 
                 progress_bar.progress((i + 1) / total_steps)
                     
-            st.write("Resultados Regressão:")
+            st.write("### Resultados Regressão (Base Meteorológica)")
             st.dataframe(pd.DataFrame(results))
 
-            # --- 2. SVR Autoregressivo ---
-            st.markdown("### SVR Autoregressivo (Media_Classe)")
+        # --- PARTE SEPARADA: SVR AUTOREGRESSIVO (COM LAGS) ---
+        # No teu notebook isto estava numa célula separada mais à frente
+        st.markdown("---")
+        st.header("SVR Autoregressivo (Previsão com Histórico)")
+        
+        # Aqui sim, criamos lags, porque o SVR Autoregressivo depende disso
+        df_class = dfL.copy()
+        for lag in range(1, 8):
+            df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
+        
+        df_class = df_class.dropna()
+        svr_cols = [f"lag{i}" for i in range(1, 8)]
+        
+        if not df_class.empty:
+            X_svr = df_class[svr_cols]
+            y_svr = df_class["Media_Classe"]
             
-            df_class = dfL.copy()
-            for lag in range(1, 8):
-                df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
+            # Usar parâmetros fixos do teu notebook
+            model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
+            model_ar.fit(X_svr, y_svr)
+            y_pred_in = model_ar.predict(X_svr)
             
-            df_class = df_class.dropna()
-            svr_cols = [f"lag{i}" for i in range(1, 8)]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred_in):.4f}")
+            c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred_in)):.4f}")
+            c3.metric("R2", f"{r2_score(y_svr, y_pred_in):.4f}")
             
-            if not df_class.empty:
-                X_svr = df_class[svr_cols]
-                y_svr = df_class["Media_Classe"]
-                
-                model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
-                model_ar.fit(X_svr, y_svr)
-                y_pred_in = model_ar.predict(X_svr)
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("MAE", f"{mean_absolute_error(y_svr, y_pred_in):.4f}")
-                c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y_svr, y_pred_in)):.4f}")
-                c3.metric("R2", f"{r2_score(y_svr, y_pred_in):.4f}")
-                
-                fig_svr = go.Figure()
-                fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="blue")))
-                fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred_in, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
-                fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
-                st.plotly_chart(fig_svr, use_container_width=True)
-            else:
-                st.warning("Dados insuficientes para SVR.")
+            fig_svr = go.Figure()
+            fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_svr, mode="lines", name="Real", line=dict(color="navy")))
+            fig_svr.add_trace(go.Scatter(x=df_class["date"], y=y_pred_in, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+            fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
+            st.plotly_chart(fig_svr, use_container_width=True)
+            
     else:
         st.warning("Não há dados de Lisboa no dataset combinado.")
 else:
-    st.error("""
-    ⚠️ Não foi possível carregar os dados de Meteorologia corretamente ou cruzá-los com a Qualidade do Ar.
-    A análise de Machine Learning não pode ser executada sem estes dados.
-    Verifique se o ficheiro 'dataset_meteorologico_portugal.csv' está válido no GitHub.
-    """)
+    st.error("Não foi possível cruzar dados de Meteo e Qualidade do Ar. Verifique o ficheiro CSV.")
