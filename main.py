@@ -6,15 +6,19 @@ import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Bibliotecas de ML
+# Bibliotecas de ML - Regressão
 from sklearn.model_selection import train_test_split, GridSearchCV, TimeSeriesSplit
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
-from sklearn.svm import SVR
-from sklearn.neural_network import MLPRegressor
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
+from sklearn.svm import SVR, SVC
+from sklearn.neural_network import MLPRegressor, MLPClassifier
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
 from lightgbm import LGBMRegressor
 
 # =============================
@@ -36,7 +40,7 @@ def processar_dados_notebook():
         if "Tipo" in dfqualidadear.columns: dfqualidadear = dfqualidadear.drop(["Tipo", "Zona"], axis=1)
         
         dfqualidadear['Data'] = pd.to_datetime(dfqualidadear['Data'], dayfirst=True, errors='coerce')
-        # NORMALIZAR DATA (00:00:00) PARA GARANTIR MERGE
+        # NORMALIZAÇÃO DE DATA
         dfqualidadear['Data'] = dfqualidadear['Data'].dt.normalize()
         
         dfqualidadear['Semana'] = dfqualidadear['Data'].dt.isocalendar().week
@@ -126,11 +130,9 @@ def processar_dados_notebook():
     # --- C. METEOROLOGIA ---
     try:
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
-        # 1. Converter para datetime e UTC
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
-        # 2. Remover Timezone (fica Naive)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
-        # 3. NORMALIZAÇÃO CRÍTICA: Forçar hora a 00:00:00 para o merge funcionar com df_ar
+        # NORMALIZAÇÃO DE DATA
         df_meteo["date"] = df_meteo["date"].dt.normalize()
         
         if 'distrito' in df_meteo.columns:
@@ -154,7 +156,7 @@ if df_ar is None:
 st.sidebar.title("📌 Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
-    ["Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "SVR Autoregressivo"]
+    ["Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo"]
 )
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
@@ -259,9 +261,11 @@ elif section == "EDA":
 # 3. MACHINE LEARNING (BASE)
 # ==============================================================================
 elif section == "Machine Learning (Base)":
-    st.header("🤖 Machine Learning (Base)")
+    st.header("🤖 Machine Learning (Base - Meteo Simples)")
     
-    if df_meteo is None: st.stop()
+    if df_meteo is None:
+        st.error("Sem dados de meteorologia.")
+        st.stop()
         
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
@@ -333,7 +337,9 @@ elif section == "Machine Learning (Base)":
 elif section == "Machine Learning (Avançado/Lags)":
     st.header("🤖 Machine Learning (Avançado com Lags)")
     
-    if df_meteo is None: st.stop()
+    if df_meteo is None:
+        st.error("Sem dados de meteorologia.")
+        st.stop()
         
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
@@ -351,7 +357,6 @@ elif section == "Machine Learning (Avançado/Lags)":
     
     Y_cols = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
     
-    # Feature Engineering
     for col in Y_cols:
         if col in dfL.columns:
             dfL[f"{col}_lag1"] = dfL[col].shift(1)
@@ -360,8 +365,6 @@ elif section == "Machine Learning (Avançado/Lags)":
             
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
-    
-    # NOTA: O seu snippet NAO faz dropna aqui, deixa para o Imputer
     
     st.subheader("Dataset Expandido (dfL com Lags)")
     st.dataframe(dfL.head())
@@ -377,22 +380,26 @@ elif section == "Machine Learning (Avançado/Lags)":
 
     if st.button("Treinar Modelos (Avançado)"):
         results1 = []
+        
         param_grids = {
             "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
             "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
             "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
         }
+        
         models = {
             "RandomForest": RandomForestRegressor(random_state=42),
             "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
             "MLP": MLPRegressor(random_state=42)
         }
+        
         tscv = TimeSeriesSplit(n_splits=3)
         prog = st.progress(0)
         
         for i, target in enumerate(Y_cols):
             if target not in dfL.columns: continue
             
+            # NOTA: Dropna apenas no target se necessário, mas Imputer trata features
             y = dfL[target].dropna()
             X = dfL[X_cols].loc[y.index]
             
@@ -416,14 +423,15 @@ elif section == "Machine Learning (Avançado/Lags)":
         st.dataframe(pd.DataFrame(results1))
 
 # ==============================================================================
-# 5. SVR AUTOREGRESSIVO (IGUAL AO SEU SNIPPET)
+# 5. CLASSIFICAÇÃO (PREVER CLASSES)
 # ==============================================================================
-elif section == "SVR Autoregressivo":
-    st.header("📈 SVR Autoregressivo (Com Lags)")
-    
+elif section == "Classificação (Prever Classes)":
+    st.header("🔮 Previsão de Classes (Classificação)")
+    st.markdown("Previsão da **classe** do poluente (1-5), usando múltiplos classificadores.")
+
     if df_meteo is None: st.stop()
-    
-    # 1. Preparar dfL (com Merge, pois o seu snippet mostra meteo cols)
+
+    # Recriar dfL (Lisboa + Meteo + Lags)
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
     distritos_validos = df_ar_ml['distrito'].unique()
@@ -434,58 +442,112 @@ elif section == "SVR Autoregressivo":
     df_Model = df_merged.dropna().copy()
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
+
+    # Features
+    X_cols = [
+        "rain", "temperature_2m", "relative_humidity_2m",
+        "temperature_80m", "wind_speed_80m", "wind_direction_80m",
+        "temperature_2m_max", "temperature_2m_min"
+    ]
     
-    # 2. Criar df_class como copia de dfL
     df_class = dfL.copy()
+    targets_class = ["PM10_classe", "PM2.5_classe", "NO2_classe", "O3_classe", "SO2_classe"]
+    
+    st.subheader("Dataset para Classificação")
+    st.dataframe(df_class.head())
+
+    if st.button("Treinar Classificadores"):
+        results_class = []
+        tscv = TimeSeriesSplit(n_splits=5)
+        
+        models = [
+            (RandomForestClassifier(), "RandomForest"),
+            (LogisticRegression(max_iter=500), "LogisticRegression"),
+            (SVC(kernel="rbf"), "SVM"),
+            (GaussianNB(), "NaiveBayes"),
+            (KNeighborsClassifier(n_neighbors=5), "KNN"),
+            (GradientBoostingClassifier(), "GradientBoosting"),
+            (DecisionTreeClassifier(), "DecisionTree"),
+            (ExtraTreesClassifier(), "ExtraTrees"),
+            (MLPClassifier(max_iter=500), "MLP")
+        ]
+        
+        prog = st.progress(0)
+        
+        for i, target in enumerate(targets_class):
+            if target not in df_class.columns: continue
+            
+            y = df_class[target].dropna()
+            X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
+            
+            for clf, name in models:
+                try:
+                    accs, f1s = [], []
+                    for train_idx, test_idx in tscv.split(X):
+                        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                        
+                        if len(np.unique(y_train)) < 2: continue
+                        
+                        y_train = y_train.astype(int)
+                        y_test = y_test.astype(int)
+                        
+                        clf.fit(X_train, y_train)
+                        y_pred = clf.predict(X_test)
+                        
+                        accs.append(accuracy_score(y_test, y_pred))
+                        f1s.append(f1_score(y_test, y_pred, average="weighted"))
+                    
+                    if accs:
+                        results_class.append({
+                            "Classe": target, "Modelo": name, 
+                            "Accuracy": np.mean(accs), "F1": np.mean(f1s)
+                        })
+                except: pass
+            prog.progress((i+1)/len(targets_class))
+            
+        st.dataframe(pd.DataFrame(results_class))
+
+# ==============================================================================
+# 6. SVR AUTOREGRESSIVO
+# ==============================================================================
+elif section == "SVR Autoregressivo":
+    st.header("📈 SVR Autoregressivo (Com Lags)")
+    
+    dfL_svr = df_ar[df_ar["Distrito"] == "Lisboa"].copy()
+    dfL_svr['Data'] = dfL_svr['Data'].dt.normalize()
+    dfL_svr = dfL_svr.sort_values("Data")
+    
+    df_class = dfL_svr.copy()
     
     if not df_class.empty:
-        # VISUALIZAÇÃO PEDIDA DO DATASET (COM METEOROLOGIA)
-        st.subheader("Dataframe usado no SVR (df_class)")
-        st.dataframe(df_class)
+        for lag in range(1, 8):
+            df_class[f"lag{lag}"] = df_class["Media_Classe"].shift(lag)
         
-        # 3. Executar o seu snippet para SVR
+        df_class = df_class.dropna()
         df_ar_svr = df_class.copy()
         
-        for lag in range(1, 8):
-            df_ar_svr[f"lag{lag}"] = df_ar_svr["Media_Classe"].shift(lag)
+        st.subheader("Dataframe usado no SVR (df_class / df_ar)")
+        st.dataframe(df_ar_svr)
         
-        # Dropna (como no snippet)
-        df_ar_svr = df_ar_svr.dropna()
-        
-        # X e y (Só usa lags)
         X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
         y = df_ar_svr["Media_Classe"]
         
-        # 4. Treino
         model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
         model_ar.fit(X, y)
         y_pred = model_ar.predict(X)
         
-        # 5. Métricas
         st.write("### Resultados SVR")
         c1, c2, c3 = st.columns(3)
         c1.metric("MAE", f"{mean_absolute_error(y, y_pred):.4f}")
         c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred)):.4f}")
         c3.metric("R2", f"{r2_score(y, y_pred):.4f}")
         
-        # 6. Gráfico (Replicando o slicing do snippet)
-        dates = df_class["date"].iloc[len(df_class)-len(y_pred):]
-        # Nota: y_pred tem o tamanho de df_ar_svr (pós dropna)
-        # df_class é o original (pré dropna). O slice alinha o final.
-        
-        real_values = df_class["Media_Classe"].iloc[len(df_class)-len(y_pred):]
-        
+        dates = df_class["Data"]
         fig_svr = go.Figure()
-        fig_svr.add_trace(go.Scatter(x=dates, y=real_values, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=dates, y=y, mode="lines", name="Real", line=dict(color="blue")))
         fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
-        
-        fig_svr.update_layout(
-            title="SVR Autoregressivo - Real vs Previsto", 
-            xaxis_title="Data", 
-            yaxis_title="Media da Classe",
-            template="plotly_white",
-            hovermode="x unified"
-        )
+        fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
-        st.warning("Sem dados suficientes.")
+        st.warning("Sem dados suficientes para Lisboa.")
