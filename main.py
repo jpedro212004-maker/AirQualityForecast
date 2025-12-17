@@ -6,19 +6,23 @@ import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Bibliotecas de ML
+# Bibliotecas de ML - Regressão e Classificação
 from sklearn.model_selection import train_test_split, GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
+
+# Modelos Lineares e SVR/SVC
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
 from sklearn.svm import SVR, SVC
 from sklearn.neural_network import MLPRegressor, MLPClassifier
+
+# Ensembles e Árvores
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
 from lightgbm import LGBMRegressor
 
 # =============================
@@ -417,7 +421,7 @@ elif section == "Machine Learning (Avançado/Lags)":
         st.dataframe(pd.DataFrame(results1))
 
 # ==============================================================================
-# 5. CLASSIFICAÇÃO
+# 5. CLASSIFICAÇÃO (PREVER CLASSES)
 # ==============================================================================
 elif section == "Classificação (Prever Classes)":
     st.header("🔮 Previsão de Classes (Classificação)")
@@ -432,7 +436,6 @@ elif section == "Classificação (Prever Classes)":
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
-    
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
 
@@ -447,7 +450,7 @@ elif section == "Classificação (Prever Classes)":
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
 
-    # 3. DEFINIR X_COLS COMPLETO (INCLUINDO LAGS)
+    # 3. DEFINIR X_COLS COMPLETO (INCLUINDO LAGS) - CORREÇÃO CRÍTICA AQUI
     X_cols_base = [
         "rain", "temperature_2m", "relative_humidity_2m",
         "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -466,26 +469,31 @@ elif section == "Classificação (Prever Classes)":
     if st.button("Treinar Classificadores"):
         results_class = []
         tscv = TimeSeriesSplit(n_splits=5)
+        
+        # DEFINIR RANDOM STATE=42 EM TODOS OS MODELOS
         models = [
-            (RandomForestClassifier(), "RandomForest"),
-            (LogisticRegression(max_iter=500), "LogisticRegression"),
-            (SVC(kernel="rbf"), "SVM"),
+            (RandomForestClassifier(random_state=42), "RandomForest"),
+            (LogisticRegression(max_iter=500, random_state=42), "LogisticRegression"),
+            (SVC(kernel="rbf", random_state=42), "SVM"),
             (GaussianNB(), "NaiveBayes"),
             (KNeighborsClassifier(n_neighbors=5), "KNN"),
-            (GradientBoostingClassifier(), "GradientBoosting"),
-            (DecisionTreeClassifier(), "DecisionTree"),
-            (ExtraTreesClassifier(), "ExtraTrees"),
-            (MLPClassifier(max_iter=500), "MLP")
+            (GradientBoostingClassifier(random_state=42), "GradientBoosting"),
+            (DecisionTreeClassifier(random_state=42), "DecisionTree"),
+            (ExtraTreesClassifier(random_state=42), "ExtraTrees"),
+            (MLPClassifier(max_iter=500, random_state=42), "MLP")
         ]
+        
         prog = st.progress(0)
+        
         for i, target in enumerate(targets_class):
             if target not in df_class.columns: continue
             
             y = df_class[target].dropna()
-            # Logica de preenchimento do snippet
+            
+            # PREENCHIMENTO DE NULOS COM FFILL/BFILL (IGUAL AO SNIPPET)
             X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
             
-            # Seguranca extra caso ffill nao resolva tudo
+            # Verificar se ainda existem NaNs e preencher com média (segurança)
             if X.isna().any().any():
                  imputer = SimpleImputer(strategy="mean")
                  X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
@@ -496,21 +504,30 @@ elif section == "Classificação (Prever Classes)":
                     for train_idx, test_idx in tscv.split(X):
                         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
                         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                        
                         if len(np.unique(y_train)) < 2: continue
+                        
                         y_train = y_train.astype(int)
                         y_test = y_test.astype(int)
+                        
                         clf.fit(X_train, y_train)
                         y_pred = clf.predict(X_test)
+                        
                         accs.append(accuracy_score(y_test, y_pred))
                         f1s.append(f1_score(y_test, y_pred, average="weighted"))
+                    
                     if accs:
-                        results_class.append({"Classe": target, "Modelo": name, "Accuracy": np.mean(accs), "F1": np.mean(f1s)})
+                        results_class.append({
+                            "Classe": target, "Modelo": name, 
+                            "Accuracy": np.mean(accs), "F1": np.mean(f1s)
+                        })
                 except: pass
             prog.progress((i+1)/len(targets_class))
+        
         st.dataframe(pd.DataFrame(results_class))
 
 # ==============================================================================
-# 6. SVR AUTOREGRESSIVO (REPLICA EXATA DO SNIPPET COM DFL)
+# 6. SVR AUTOREGRESSIVO
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
