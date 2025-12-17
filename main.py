@@ -470,19 +470,18 @@ elif section == "Classificação (Prever Classes)":
         results_class = []
         tscv = TimeSeriesSplit(n_splits=5)
         
-        # DEFINIR RANDOM STATE=42 EM TODOS OS MODELOS
         models = [
-            (RandomForestClassifier(random_state=42), "RandomForest"),
-            (LogisticRegression(max_iter=500, random_state=42), "LogisticRegression"),
-            (SVC(kernel="rbf", random_state=42), "SVM"),
-            (GaussianNB(), "NaiveBayes"),
-            (KNeighborsClassifier(n_neighbors=5), "KNN"),
-            (GradientBoostingClassifier(random_state=42), "GradientBoosting"),
-            (DecisionTreeClassifier(random_state=42), "DecisionTree"),
-            (ExtraTreesClassifier(random_state=42), "ExtraTrees"),
-            (MLPClassifier(max_iter=500, random_state=42), "MLP")
+        (RandomForestClassifier(), "RandomForest"),
+        (LogisticRegression(max_iter=500), "LogisticRegression"),
+        (SVC(kernel="rbf"), "SVM"),
+        (GaussianNB(), "NaiveBayes"),
+        (KNeighborsClassifier(n_neighbors=5), "KNN"),
+        (GradientBoostingClassifier(), "GradientBoosting"),
+        (DecisionTreeClassifier(), "DecisionTree"),
+        (ExtraTreesClassifier(), "ExtraTrees"),
+        (MLPClassifier(max_iter=500), "MLP")
         ]
-        
+            
         prog = st.progress(0)
         
         for i, target in enumerate(targets_class):
@@ -583,3 +582,4 @@ elif section == "SVR Autoregressivo":
         st.plotly_chart(fig_svr, use_container_width=True)
     else:
         st.warning("Sem dados suficientes para Lisboa.")
+
