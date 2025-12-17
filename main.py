@@ -372,4 +372,197 @@ elif section == "Machine Learning (Avançado/Lags)":
         "temperature_80m", "wind_speed_80m", "wind_direction_80m",
         "temperature_2m_max", "temperature_2m_min"
     ]
-    X_cols_lags = [f"{c}_lag1" for c in Y_cols] +
+    X_cols_lags = [f"{c}_lag1" for c in Y_cols] + [f"{c}_lag2" for c in Y_cols] + [f"{c}_roll3" for c in Y_cols]
+    X_cols = X_cols_base + X_cols_lags + ["month", "weekday"]
+    X_cols = [c for c in X_cols if c in dfL.columns]
+
+    if st.button("Treinar Modelos (Avançado)"):
+        results1 = []
+        param_grids = {
+            "RandomForest": {"n_estimators": [100, 200], "max_depth": [5, 10, None]},
+            "LightGBM": {"n_estimators": [100, 200], "num_leaves": [31, 50], "learning_rate": [0.05, 0.1]},
+            "MLP": {"hidden_layer_sizes": [(64,), (64,32)], "alpha": [0.0001, 0.001], "max_iter": [300, 500]}
+        }
+        models = {
+            "RandomForest": RandomForestRegressor(random_state=42),
+            "LightGBM": LGBMRegressor(random_state=42, verbose=-1),
+            "MLP": MLPRegressor(random_state=42)
+        }
+        tscv = TimeSeriesSplit(n_splits=3)
+        prog = st.progress(0)
+        
+        for i, target in enumerate(Y_cols):
+            if target not in dfL.columns: continue
+            
+            y = dfL[target].dropna()
+            X = dfL[X_cols].loc[y.index]
+            
+            imputer = SimpleImputer(strategy="mean")
+            X_imp = imputer.fit_transform(X)
+            
+            X_train, X_test, y_train, y_test = train_test_split(X_imp, y, test_size=0.2, shuffle=False)
+            
+            for name, model in models.items():
+                try:
+                    grid = GridSearchCV(model, param_grids[name], cv=tscv, scoring="neg_mean_absolute_error", n_jobs=1)
+                    grid.fit(X_train, y_train)
+                    y_pred = grid.best_estimator_.predict(X_test)
+                    mae = mean_absolute_error(y_test, y_pred)
+                    r2 = r2_score(y_test, y_pred)
+                    results1.append({"Poluente": target, "Modelo": name, "BestParams": str(grid.best_params_), "MAE": mae, "R2": r2})
+                except Exception as e:
+                    st.write(f"Erro em {name}: {e}")
+            prog.progress((i+1)/len(Y_cols))
+        
+        st.dataframe(pd.DataFrame(results1))
+
+# ==============================================================================
+# 5. CLASSIFICAÇÃO
+# ==============================================================================
+elif section == "Classificação (Prever Classes)":
+    st.header("🔮 Previsão de Classes (Classificação)")
+    if df_meteo is None: st.stop()
+
+    # 1. Preparação (Merge inicial)
+    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
+    df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
+    distritos_validos = df_ar_ml['distrito'].unique()
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)].copy()
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.normalize()
+    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
+    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
+    df_Model = df_merged.dropna().copy()
+    
+    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("date").reset_index(drop=True)
+
+    # 2. FEATURE ENGINEERING (ESSENCIAL PARA IGUALAR O AVANÇADO)
+    Y_cols_reg = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
+    for col in Y_cols_reg:
+        if col in dfL.columns:
+            dfL[f"{col}_lag1"] = dfL[col].shift(1)
+            dfL[f"{col}_lag2"] = dfL[col].shift(2)
+            dfL[f"{col}_roll3"] = dfL[col].rolling(3).mean()
+            
+    dfL["month"] = dfL["date"].dt.month
+    dfL["weekday"] = dfL["date"].dt.weekday
+
+    # 3. DEFINIR X_COLS COMPLETO (INCLUINDO LAGS)
+    X_cols_base = [
+        "rain", "temperature_2m", "relative_humidity_2m",
+        "temperature_80m", "wind_speed_80m", "wind_direction_80m",
+        "temperature_2m_max", "temperature_2m_min"
+    ]
+    X_cols_lags = [f"{c}_lag1" for c in Y_cols_reg] + [f"{c}_lag2" for c in Y_cols_reg] + [f"{c}_roll3" for c in Y_cols_reg]
+    X_cols = X_cols_base + X_cols_lags + ["month", "weekday"]
+    X_cols = [c for c in X_cols if c in dfL.columns]
+
+    df_class = dfL.copy()
+    targets_class = ["PM10_classe", "PM2.5_classe", "NO2_classe", "O3_classe", "SO2_classe"]
+    
+    st.subheader("Dataset para Classificação (Com Features Avançadas)")
+    st.dataframe(df_class.head())
+
+    if st.button("Treinar Classificadores"):
+        results_class = []
+        tscv = TimeSeriesSplit(n_splits=5)
+        models = [
+            (RandomForestClassifier(), "RandomForest"),
+            (LogisticRegression(max_iter=500), "LogisticRegression"),
+            (SVC(kernel="rbf"), "SVM"),
+            (GaussianNB(), "NaiveBayes"),
+            (KNeighborsClassifier(n_neighbors=5), "KNN"),
+            (GradientBoostingClassifier(), "GradientBoosting"),
+            (DecisionTreeClassifier(), "DecisionTree"),
+            (ExtraTreesClassifier(), "ExtraTrees"),
+            (MLPClassifier(max_iter=500), "MLP")
+        ]
+        prog = st.progress(0)
+        for i, target in enumerate(targets_class):
+            if target not in df_class.columns: continue
+            
+            y = df_class[target].dropna()
+            # Logica de preenchimento do snippet
+            X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
+            
+            # Seguranca extra caso ffill nao resolva tudo
+            if X.isna().any().any():
+                 imputer = SimpleImputer(strategy="mean")
+                 X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
+
+            for clf, name in models:
+                try:
+                    accs, f1s = [], []
+                    for train_idx, test_idx in tscv.split(X):
+                        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+                        if len(np.unique(y_train)) < 2: continue
+                        y_train = y_train.astype(int)
+                        y_test = y_test.astype(int)
+                        clf.fit(X_train, y_train)
+                        y_pred = clf.predict(X_test)
+                        accs.append(accuracy_score(y_test, y_pred))
+                        f1s.append(f1_score(y_test, y_pred, average="weighted"))
+                    if accs:
+                        results_class.append({"Classe": target, "Modelo": name, "Accuracy": np.mean(accs), "F1": np.mean(f1s)})
+                except: pass
+            prog.progress((i+1)/len(targets_class))
+        st.dataframe(pd.DataFrame(results_class))
+
+# ==============================================================================
+# 6. SVR AUTOREGRESSIVO (REPLICA EXATA DO SNIPPET COM DFL)
+# ==============================================================================
+elif section == "SVR Autoregressivo":
+    st.header("📈 SVR Autoregressivo (Com Lags)")
+    
+    if df_meteo is None: st.stop()
+    
+    df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
+    df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
+    
+    distritos_validos = df_ar_ml['distrito'].unique()
+    df_meteo_filtrado = df_meteo[df_meteo['distrito'].isin(distritos_validos)].copy()
+    df_meteo_filtrado['date'] = df_meteo_filtrado['date'].dt.normalize()
+    df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
+    
+    df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
+    df_Model = df_merged.dropna().copy()
+    
+    dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
+    dfL = dfL.sort_values("date").reset_index(drop=True)
+    
+    df_class = dfL.copy()
+    
+    if not df_class.empty:
+        df_ar_svr = df_class.copy()
+        for lag in range(1, 8):
+            df_ar_svr[f"lag{lag}"] = df_ar_svr["Media_Classe"].shift(lag)
+        
+        df_ar_svr = df_ar_svr.dropna()
+        
+        st.subheader("Dataframe usado no SVR (df_class / df_ar)")
+        st.dataframe(df_ar_svr)
+        
+        X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
+        y = df_ar_svr["Media_Classe"]
+        
+        model_ar = SVR(C=10, epsilon=0.1, gamma=0.01)
+        model_ar.fit(X, y)
+        y_pred = model_ar.predict(X)
+        
+        st.write("### Resultados SVR")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("MAE", f"{mean_absolute_error(y, y_pred):.4f}")
+        c2.metric("RMSE", f"{np.sqrt(mean_squared_error(y, y_pred)):.4f}")
+        c3.metric("R2", f"{r2_score(y, y_pred):.4f}")
+        
+        dates = df_class["date"].iloc[len(df_class)-len(y_pred):]
+        real_values = df_class["Media_Classe"].iloc[len(df_class)-len(y_pred):]
+        
+        fig_svr = go.Figure()
+        fig_svr.add_trace(go.Scatter(x=dates, y=real_values, mode="lines", name="Real", line=dict(color="blue")))
+        fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
+        fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
+        st.plotly_chart(fig_svr, use_container_width=True)
+    else:
+        st.warning("Sem dados suficientes para Lisboa.")
