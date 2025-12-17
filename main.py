@@ -162,7 +162,7 @@ section = st.sidebar.radio(
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
 # ==============================================================================
-# 0. SOBRE O TRABALHO (NOVA ABA)
+# 0. SOBRE O TRABALHO 
 # ==============================================================================
 if section == "Sobre o Trabalho":
     st.header("📋 Sobre o Trabalho")
@@ -353,8 +353,8 @@ elif section == "Machine Learning (Base)":
 # ==============================================================================
 # 4. MACHINE LEARNING (AVANÇADO)
 # ==============================================================================
-elif section == "Machine Learning (Avançado/Lags)":
-    st.header("🤖 Machine Learning (Avançado com Lags)")
+elif section == "Machine Learning (Avançado)":
+    st.header("🤖 Machine Learning")
     
     if df_meteo is None: st.stop()
         
@@ -439,7 +439,7 @@ elif section == "Machine Learning (Avançado/Lags)":
 # 5. CLASSIFICAÇÃO
 # ==============================================================================
 elif section == "Classificação (Prever Classes)":
-    st.header("🔮 Previsão de Classes (Classificação)")
+    st.header("🔮 Previsão de Classes")
     if df_meteo is None: st.stop()
 
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
@@ -541,7 +541,7 @@ elif section == "Classificação (Prever Classes)":
 # 6. SVR AUTOREGRESSIVO
 # ==============================================================================
 elif section == "SVR Autoregressivo":
-    st.header("📈 SVR Autoregressivo (Com Lags)")
+    st.header("📈 SVR Autoregressivo")
     
     if df_meteo is None: st.stop()
     
@@ -619,3 +619,4 @@ elif section == "SVR Autoregressivo":
 
     else:
         st.warning("Sem dados suficientes para Lisboa.")
+
