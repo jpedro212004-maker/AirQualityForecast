@@ -132,7 +132,7 @@ def processar_dados_notebook():
         df_meteo = pd.read_csv("dataset_meteorologico_portugal.csv")
         df_meteo["date"] = pd.to_datetime(df_meteo["date"], utc=True)
         df_meteo["date"] = df_meteo["date"].dt.tz_localize(None)
-        # NORMALIZAÇÃO DE DATA (CRÍTICO)
+        # NORMALIZAÇÃO DE DATA
         df_meteo["date"] = df_meteo["date"].dt.normalize()
         
         if 'distrito' in df_meteo.columns:
@@ -156,15 +156,34 @@ if df_ar is None:
 st.sidebar.title("📌 Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
-    ["Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo"]
+    ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo"]
 )
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
 # ==============================================================================
+# 0. SOBRE O TRABALHO (NOVA ABA)
+# ==============================================================================
+if section == "Sobre o Trabalho":
+    st.header("📋 Sobre o Trabalho")
+    st.markdown("""
+    ### Objetivo do Trabalho:
+    O objetivo deste estudo é analisar a evolução da qualidade do ar ao longo do tempo, comparando diferentes anos para identificar padrões e tendências.
+    Pretende-se compreender como diversos fatores influenciam a qualidade do ar, nomeadamente:
+
+    * 🔥 **Ocorrência de fogos**
+    * 🌦️ **Condições meteorológicas**
+    * 🌱 **Investimento em políticas e ações ambientais**
+    * 👥 **Densidade populacional**
+    * 📍 **Localização geográfica (distritos do país)**
+
+    A análise permitirá avaliar a relação entre estes fatores e a qualidade do ar, de forma a que seja possível construir um modelo de previsão.
+    """)
+
+# ==============================================================================
 # 1. DATASETS
 # ==============================================================================
-if section == "Datasets":
+elif section == "Datasets":
     st.header("📂 Datasets Utilizados")
     if df_meteo is not None:
         st.subheader("Meteorologia (Normalizado)")
@@ -431,11 +450,10 @@ elif section == "Classificação (Prever Classes)":
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
-    
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
 
-    # FEATURE ENGINEERING (ESSENCIAL)
+    # FEATURE ENGINEERING (Lags)
     Y_cols_reg = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
     for col in Y_cols_reg:
         if col in dfL.columns:
@@ -467,7 +485,6 @@ elif section == "Classificação (Prever Classes)":
         results_class = []
         tscv = TimeSeriesSplit(n_splits=5)
         
-        # DEFINIR RANDOM STATE=42
         models = [
             (RandomForestClassifier(random_state=42), "RandomForest"),
             (LogisticRegression(max_iter=500, random_state=42), "LogisticRegression"),
@@ -486,8 +503,6 @@ elif section == "Classificação (Prever Classes)":
             if target not in df_class.columns: continue
             
             y = df_class[target].dropna()
-            
-            # PREENCHIMENTO DE NULOS
             X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
             
             if X.isna().any().any():
@@ -523,7 +538,7 @@ elif section == "Classificação (Prever Classes)":
         st.dataframe(pd.DataFrame(results_class))
 
 # ==============================================================================
-# 6. SVR AUTOREGRESSIVO (COM PREVISÃO FUTURA)
+# 6. SVR AUTOREGRESSIVO
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
@@ -581,40 +596,26 @@ elif section == "SVR Autoregressivo":
         # --- PREVISÃO 7 DIAS ---
         st.subheader("🔮 Previsão para os Próximos 7 Dias")
         
-        # Últimos 7 valores conhecidos (para alimentar a previsão do dia seguinte)
         last_window = list(df_class["Media_Classe"].iloc[-7:].values)
         future_preds = []
         last_date = df_class["date"].max()
         future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, 8)]
 
         for _ in range(7):
-            # Vetor de features para o SVR: [lag1, lag2, ..., lag7]
-            # lag1 é o valor mais recente (ontem), lag7 é o mais antigo
             features = [last_window[-i] for i in range(1, 8)]
-            
-            # Prever o dia seguinte
             pred = model_ar.predict([features])[0]
             future_preds.append(pred)
-            
-            # Atualizar a janela com a nova previsão
             last_window.append(pred)
 
         df_future = pd.DataFrame({"Data": future_dates, "Previsão (Media_Classe)": future_preds})
         st.dataframe(df_future)
 
-        # Gráfico estendido
         fig_future = go.Figure()
-        
-        # Histórico recente (30 dias)
         recent_hist = df_class.iloc[-30:]
         fig_future.add_trace(go.Scatter(x=recent_hist["date"], y=recent_hist["Media_Classe"], mode="lines+markers", name="Histórico", line=dict(color="blue")))
-        
-        # Previsão
         fig_future.add_trace(go.Scatter(x=df_future["Data"], y=df_future["Previsão (Media_Classe)"], mode="lines+markers", name="Previsão 7 Dias", line=dict(color="green", dash="dash")))
-        
         fig_future.update_layout(title="Previsão de Qualidade do Ar (Próximos 7 Dias)", xaxis_title="Data", yaxis_title="Media Classe")
         st.plotly_chart(fig_future, use_container_width=True)
 
     else:
         st.warning("Sem dados suficientes para Lisboa.")
-
