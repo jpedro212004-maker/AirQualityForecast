@@ -6,23 +6,19 @@ import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 
-# Bibliotecas de ML - Regressão e Classificação
+# Bibliotecas de ML
 from sklearn.model_selection import train_test_split, GridSearchCV, TimeSeriesSplit
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
-
-# Modelos Lineares e SVR/SVC
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
 from sklearn.svm import SVR, SVC
 from sklearn.neural_network import MLPRegressor, MLPClassifier
-
-# Ensembles e Árvores
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, ExtraTreesClassifier
-from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
 from lightgbm import LGBMRegressor
 
 # =============================
@@ -421,13 +417,12 @@ elif section == "Machine Learning (Avançado/Lags)":
         st.dataframe(pd.DataFrame(results1))
 
 # ==============================================================================
-# 5. CLASSIFICAÇÃO (PREVER CLASSES)
+# 5. CLASSIFICAÇÃO
 # ==============================================================================
 elif section == "Classificação (Prever Classes)":
     st.header("🔮 Previsão de Classes (Classificação)")
     if df_meteo is None: st.stop()
 
-    # 1. Preparação (Merge inicial)
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
     distritos_validos = df_ar_ml['distrito'].unique()
@@ -436,10 +431,11 @@ elif section == "Classificação (Prever Classes)":
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
+    
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
 
-    # 2. FEATURE ENGINEERING (ESSENCIAL PARA IGUALAR O AVANÇADO)
+    # FEATURE ENGINEERING (ESSENCIAL)
     Y_cols_reg = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
     for col in Y_cols_reg:
         if col in dfL.columns:
@@ -450,7 +446,7 @@ elif section == "Classificação (Prever Classes)":
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
 
-    # 3. DEFINIR X_COLS COMPLETO (INCLUINDO LAGS) - CORREÇÃO CRÍTICA AQUI
+    # X COLS COMPLETO
     X_cols_base = [
         "rain", "temperature_2m", "relative_humidity_2m",
         "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -464,24 +460,26 @@ elif section == "Classificação (Prever Classes)":
     targets_class = ["PM10_classe", "PM2.5_classe", "NO2_classe", "O3_classe", "SO2_classe"]
     
     st.subheader("Dataset para Classificação (Com Features Avançadas)")
-    st.dataframe(df_class.head())
+    cols_to_show = ["PM10_classe"] + X_cols[:5] + [c for c in X_cols if "lag1" in c]
+    st.dataframe(df_class[cols_to_show].head())
 
     if st.button("Treinar Classificadores"):
         results_class = []
         tscv = TimeSeriesSplit(n_splits=5)
         
+        # DEFINIR RANDOM STATE=42
         models = [
-        (RandomForestClassifier(), "RandomForest"),
-        (LogisticRegression(max_iter=500), "LogisticRegression"),
-        (SVC(kernel="rbf"), "SVM"),
-        (GaussianNB(), "NaiveBayes"),
-        (KNeighborsClassifier(n_neighbors=5), "KNN"),
-        (GradientBoostingClassifier(), "GradientBoosting"),
-        (DecisionTreeClassifier(), "DecisionTree"),
-        (ExtraTreesClassifier(), "ExtraTrees"),
-        (MLPClassifier(max_iter=500), "MLP")
+            (RandomForestClassifier(random_state=42), "RandomForest"),
+            (LogisticRegression(max_iter=500, random_state=42), "LogisticRegression"),
+            (SVC(kernel="rbf", random_state=42), "SVM"),
+            (GaussianNB(), "NaiveBayes"),
+            (KNeighborsClassifier(n_neighbors=5), "KNN"),
+            (GradientBoostingClassifier(random_state=42), "GradientBoosting"),
+            (DecisionTreeClassifier(random_state=42), "DecisionTree"),
+            (ExtraTreesClassifier(random_state=42), "ExtraTrees"),
+            (MLPClassifier(max_iter=500, random_state=42), "MLP")
         ]
-            
+        
         prog = st.progress(0)
         
         for i, target in enumerate(targets_class):
@@ -489,10 +487,9 @@ elif section == "Classificação (Prever Classes)":
             
             y = df_class[target].dropna()
             
-            # PREENCHIMENTO DE NULOS COM FFILL/BFILL (IGUAL AO SNIPPET)
+            # PREENCHIMENTO DE NULOS
             X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
             
-            # Verificar se ainda existem NaNs e preencher com média (segurança)
             if X.isna().any().any():
                  imputer = SimpleImputer(strategy="mean")
                  X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
@@ -526,7 +523,7 @@ elif section == "Classificação (Prever Classes)":
         st.dataframe(pd.DataFrame(results_class))
 
 # ==============================================================================
-# 6. SVR AUTOREGRESSIVO
+# 6. SVR AUTOREGRESSIVO (COM PREVISÃO FUTURA)
 # ==============================================================================
 elif section == "SVR Autoregressivo":
     st.header("📈 SVR Autoregressivo (Com Lags)")
@@ -580,6 +577,44 @@ elif section == "SVR Autoregressivo":
         fig_svr.add_trace(go.Scatter(x=dates, y=y_pred, mode="lines", name="Previsto (SVR)", line=dict(color="red")))
         fig_svr.update_layout(title="SVR Autoregressivo - Real vs Previsto", xaxis_title="Data", template="plotly_white")
         st.plotly_chart(fig_svr, use_container_width=True)
+
+        # --- PREVISÃO 7 DIAS ---
+        st.subheader("🔮 Previsão para os Próximos 7 Dias")
+        
+        # Últimos 7 valores conhecidos (para alimentar a previsão do dia seguinte)
+        last_window = list(df_class["Media_Classe"].iloc[-7:].values)
+        future_preds = []
+        last_date = df_class["date"].max()
+        future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, 8)]
+
+        for _ in range(7):
+            # Vetor de features para o SVR: [lag1, lag2, ..., lag7]
+            # lag1 é o valor mais recente (ontem), lag7 é o mais antigo
+            features = [last_window[-i] for i in range(1, 8)]
+            
+            # Prever o dia seguinte
+            pred = model_ar.predict([features])[0]
+            future_preds.append(pred)
+            
+            # Atualizar a janela com a nova previsão
+            last_window.append(pred)
+
+        df_future = pd.DataFrame({"Data": future_dates, "Previsão (Media_Classe)": future_preds})
+        st.dataframe(df_future)
+
+        # Gráfico estendido
+        fig_future = go.Figure()
+        
+        # Histórico recente (30 dias)
+        recent_hist = df_class.iloc[-30:]
+        fig_future.add_trace(go.Scatter(x=recent_hist["date"], y=recent_hist["Media_Classe"], mode="lines+markers", name="Histórico", line=dict(color="blue")))
+        
+        # Previsão
+        fig_future.add_trace(go.Scatter(x=df_future["Data"], y=df_future["Previsão (Media_Classe)"], mode="lines+markers", name="Previsão 7 Dias", line=dict(color="green", dash="dash")))
+        
+        fig_future.update_layout(title="Previsão de Qualidade do Ar (Próximos 7 Dias)", xaxis_title="Data", yaxis_title="Media Classe")
+        st.plotly_chart(fig_future, use_container_width=True)
+
     else:
         st.warning("Sem dados suficientes para Lisboa.")
 
