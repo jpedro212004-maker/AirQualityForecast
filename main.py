@@ -156,8 +156,7 @@ if df_ar is None:
 st.sidebar.title("📌 Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
-    ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo"]
-)
+    ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo","Future Improvements","Conclusão"])
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
@@ -619,4 +618,44 @@ elif section == "SVR Autoregressivo":
 
     else:
         st.warning("Sem dados suficientes para Lisboa.")
+
+
+# ==============================================================================
+# 7. FUTURE IMPROVEMENTS
+# ==============================================================================
+elif section == "Future Improvements":
+    st.header("🚀 Melhorias Futuras (Future Improvements)")
+    
+    st.markdown("""
+    Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
+
+    * **1. Integração de Dados de Tráfego:** Adicionar dados de fluxo de trânsito em tempo real, uma vez que o tráfego automóvel é a principal fonte de $NO_2$ em zonas urbanas como Lisboa.
+    * **2. Modelos de Deep Learning:** Implementar redes neuronais recorrentes como **LSTM (Long Short-Term Memory)** ou **GRU**, que são mais eficazes a capturar dependências temporais de longo prazo do que o SVR tradicional.
+    * **3. Dados de Incêndios:** Integrar datasets de focos de incêndio (via satélite) para correlacionar picos de $PM2.5$ e $PM10$ com eventos de fogos florestais.
+    * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
+    * **5. Sistema de Alertas:** Criar um módulo de notificação automática que envie alertas sempre que a previsão de um poluente exceder os limites legais da UE.
+    """)
+
+# ==============================================================================
+# 8. CONCLUSÃO
+# ==============================================================================
+elif section == "Conclusão":
+    st.header("🏁 Conclusão")
+    
+    # Exemplo de métrica final resumida (opcional)
+    st.info("O projeto demonstrou que as condições meteorológicas e o histórico temporal são preditores fundamentais da qualidade do ar.")
+
+    st.markdown("""
+    ### Principais conclusões retiradas:
+    
+    1. **Relação Meteo-Ar:** Observou-se que a velocidade do vento e a precipitação têm um efeito de "limpeza" na atmosfera, reduzindo a concentração de partículas suspensas.
+    2. **Desempenho dos Modelos:** O modelo **SVR Autoregressivo** mostrou-se robusto para previsões de curto prazo, conseguindo seguir as tendências gerais de flutuação da qualidade do ar.
+    3. **Sazonalidade:** Através da EDA, confirmou-se que poluentes como o Ozono ($O_3$) apresentam variações críticas dependendo da temperatura e radiação solar.
+    4. **Impacto da Classificação:** A capacidade de prever a "Classe" de qualidade do ar (e não apenas o valor numérico) provou ser uma ferramenta mais intuitiva para a comunicação de saúde pública aos cidadãos.
+
+    Em suma, o dashboard cumpre o seu propósito de transformar dados brutos em informação acionável, permitindo visualizar não só o estado atual, mas antecipar cenários futuros para uma melhor gestão ambiental.
+    """)
+    
+    st.success("Trabalho concluído com sucesso.")
+
 
