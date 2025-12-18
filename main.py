@@ -156,7 +156,7 @@ if df_ar is None:
 st.sidebar.title("Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
-    ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo","Future Improvements","Conclusão"])
+    ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo","Conclusão"])
 
 poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 
@@ -669,7 +669,7 @@ elif section == "SVR Autoregressivo":
 # ==============================================================================
 # 7. CONCLUSÕES
 # ==============================================================================
-elif section == "Conclusões":
+elif section == "Conclusão":
     st.header("Conclusões e Trabalho Futuro")
     
     st.write("Abaixo apresentamos uma síntese dos principais resultados alcançados, bem como as limitações e oportunidades de melhoria identificadas.")
@@ -712,3 +712,4 @@ elif section == "Conclusões":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
+
