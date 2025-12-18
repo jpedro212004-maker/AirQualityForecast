@@ -193,20 +193,20 @@ elif section == "Datasets":
     st.header("Datasets Utilizados")
     if df_meteo is not None:
         st.subheader("Meteorologia (Normalizado)")
-        st.dataframe(df_meteo.head())
+        st.dataframe(df_meteo)
     
     st.subheader("Qualidade do Ar 2025 (Processado)")
-    st.dataframe(df_ar.head())
+    st.dataframe(df_ar)
 
     if df2023_clean is not None:
         st.subheader("Qualidade do Ar 2023 (Processado)")
-        st.dataframe(df2023_clean.head())
+        st.dataframe(df2023_clean)
 
 # ==============================================================================
 # 2. EDA - VERSÃO COMPACTA
 # ==============================================================================
 elif section == "EDA":
-    st.header("Análise Exploratória (Compacta)")
+    st.header("Análise Exploratória")
 
     # 1. Componentes Diários 2025 - Reduzido na altura e largura
     st.subheader("1. Poluentes 2025")
@@ -711,6 +711,7 @@ elif section == "Conclusão":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
+
 
 
 
