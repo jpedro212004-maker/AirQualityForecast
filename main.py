@@ -464,9 +464,10 @@ elif section == "Machine Learning (Avançado/Lags)":
 # 5. CLASSIFICAÇÃO
 # ==============================================================================
 elif section == "Classificação (Prever Classes)":
-    st.header("🔮 Previsão de Classes")
+    st.header("🔮 Previsão de Classes (Classificação)")
     if df_meteo is None: st.stop()
 
+    # 1. Preparação (Merge inicial)
     df_ar_ml = df_ar.rename(columns={'Data': 'date', 'Distrito': 'distrito'})
     df_ar_ml['date'] = df_ar_ml['date'].dt.normalize()
     distritos_validos = df_ar_ml['distrito'].unique()
@@ -475,10 +476,11 @@ elif section == "Classificação (Prever Classes)":
     df_meteo_filtrado = df_meteo_filtrado.groupby(['date', 'distrito']).mean(numeric_only=True).reset_index()
     df_merged = pd.merge(df_ar_ml, df_meteo_filtrado, on=['date', 'distrito'], how='inner')
     df_Model = df_merged.dropna().copy()
+    
     dfL = df_Model[df_Model["distrito"] == "Lisboa"].copy()
     dfL = dfL.sort_values("date").reset_index(drop=True)
 
-    # FEATURE ENGINEERING (Lags)
+    # 2. FEATURE ENGINEERING (ESSENCIAL PARA IGUALAR O AVANÇADO)
     Y_cols_reg = ["O3", "NO2", "SO2", "PM10", "PM2.5"]
     for col in Y_cols_reg:
         if col in dfL.columns:
@@ -489,7 +491,7 @@ elif section == "Classificação (Prever Classes)":
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
 
-    # X COLS COMPLETO
+    # 3. DEFINIR X_COLS COMPLETO (INCLUINDO LAGS) - CORREÇÃO CRÍTICA AQUI
     X_cols_base = [
         "rain", "temperature_2m", "relative_humidity_2m",
         "temperature_80m", "wind_speed_80m", "wind_direction_80m",
@@ -510,6 +512,7 @@ elif section == "Classificação (Prever Classes)":
         results_class = []
         tscv = TimeSeriesSplit(n_splits=5)
         
+        # DEFINIR RANDOM STATE=42 EM TODOS OS MODELOS
         models = [
             (RandomForestClassifier(random_state=42), "RandomForest"),
             (LogisticRegression(max_iter=500, random_state=42), "LogisticRegression"),
@@ -528,8 +531,11 @@ elif section == "Classificação (Prever Classes)":
             if target not in df_class.columns: continue
             
             y = df_class[target].dropna()
+            
+            # PREENCHIMENTO DE NULOS COM FFILL/BFILL (IGUAL AO SNIPPET)
             X = df_class[X_cols].loc[y.index].fillna(method="ffill").fillna(method="bfill")
             
+            # Verificar se ainda existem NaNs e preencher com média (segurança)
             if X.isna().any().any():
                  imputer = SimpleImputer(strategy="mean")
                  X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
@@ -541,6 +547,7 @@ elif section == "Classificação (Prever Classes)":
                         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
                         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
                         
+                        # LOGICA CRITICA: SE SÓ TEM 1 CLASSE, PULA O FOLD
                         if len(np.unique(y_train)) < 2: continue
                         
                         y_train = y_train.astype(int)
@@ -552,11 +559,18 @@ elif section == "Classificação (Prever Classes)":
                         accs.append(accuracy_score(y_test, y_pred))
                         f1s.append(f1_score(y_test, y_pred, average="weighted"))
                     
-                    if accs:
-                        results_class.append({
-                            "Classe": target, "Modelo": name, 
-                            "Accuracy": np.mean(accs), "F1": np.mean(f1s)
-                        })
+                    # LOGICA CRITICA: SE ACCS VAZIO (TODOS PULADOS), RETORNA NAN
+                    if not accs:
+                        final_acc = np.nan
+                        final_f1 = np.nan
+                    else:
+                        final_acc = np.mean(accs)
+                        final_f1 = np.mean(f1s)
+
+                    results_class.append({
+                        "Classe": target, "Modelo": name, 
+                        "Accuracy": final_acc, "F1": final_f1
+                    })
                 except: pass
             prog.progress((i+1)/len(targets_class))
         
@@ -684,6 +698,7 @@ elif section == "Conclusão":
     """)
     
     st.success("Trabalho concluído com sucesso.")
+
 
 
 
