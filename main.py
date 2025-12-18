@@ -704,7 +704,6 @@ elif section == "Conclusão":
     # 2. TRABALHO FUTURO 
     st.subheader("Trabalho Futuro")
     st.markdown("""
-    Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
 
     * **1. Integração de Novas Features existentes para 2023:** Através do EDA onde relacionamos os dados de 2023 com 2025 foi possível ver relações com features que não foram utilizadas no nosso modelo de previsão como por exemplo os fogos. 
     * **2. Monitorizar features de forma a obter dados :** Embora não esteja no nosso EDA, devido à não existir datasets disponíveis existem features que seriam interessantes de explorar tal como o trânsito nas cidades.
@@ -712,5 +711,6 @@ elif section == "Conclusão":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
+
 
 
