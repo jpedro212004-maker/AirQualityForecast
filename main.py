@@ -163,27 +163,34 @@ poluentesclean = ['NO2', 'O3', 'PM2.5', 'PM10', 'SO2']
 # ==============================================================================
 # 0. SOBRE O TRABALHO 
 # ==============================================================================
+# ==============================================================================
+# 0. SOBRE O TRABALHO
+# ==============================================================================
 if section == "Sobre o Trabalho":
-    st.header("📋 Sobre o Trabalho")
+    st.header("Sobre o Trabalho")
     st.markdown("""
-    ### Objetivo do Trabalho:
-    O objetivo deste estudo é analisar a evolução da qualidade do ar ao longo do tempo, comparando diferentes anos para identificar padrões e tendências.
-    Pretende-se compreender como diversos fatores influenciam a qualidade do ar, nomeadamente:
+    ###
+    
+    Este projeto tem como principal objetivo analisar a qualidade do ar em Portugal, focando-se em dois pontos essenciais:
 
-    * 🔥 **Ocorrência de fogos**
-    * 🌦️ **Condições meteorológicas**
-    * 🌱 **Investimento em políticas e ações ambientais**
-    * 👥 **Densidade populacional**
-    * 📍 **Localização geográfica (distritos do país)**
+    1.  **Entender as Relações:**
+        Queremos perceber de que forma a qualidade do ar é influenciada por outros fatores externos, tais como:
+        * **Condições Meteorológicas** (temperatura, chuva, vento).
+        * **Ocorrência de Incêndios**.
+        * **Localização**.
+        * **Fatores Populacionais e Ambientais**.
 
-    A análise permitirá avaliar a relação entre estes fatores e a qualidade do ar, de forma a que seja possível construir um modelo de previsão.
+    2.  **Fazer Previsões:**
+        Para além de analisar o passado, o nosso objetivo é **prever o futuro**. Utilizamos modelos de *Machine Learning* para estimar como estará a qualidade do ar nos próximos dias em um distrito de Portugal, com base no histórico e nas previsões do tempo.
     """)
+
+ 
 
 # ==============================================================================
 # 1. DATASETS
 # ==============================================================================
 elif section == "Datasets":
-    st.header("📂 Datasets Utilizados")
+    st.header("Datasets Utilizados")
     if df_meteo is not None:
         st.subheader("Meteorologia (Normalizado)")
         st.dataframe(df_meteo.head())
@@ -199,7 +206,7 @@ elif section == "Datasets":
 # 2. EDA - VERSÃO COMPACTA
 # ==============================================================================
 elif section == "EDA":
-    st.header("📊 Análise Exploratória (Compacta)")
+    st.header("Análise Exploratória (Compacta)")
 
     # 1. Componentes Diários 2025 - Reduzido na altura e largura
     st.subheader("1. Poluentes 2025")
@@ -305,7 +312,7 @@ elif section == "EDA":
 # 3. MACHINE LEARNING (BASE)
 # ==============================================================================
 elif section == "Machine Learning (Base)":
-    st.header("🤖 Machine Learning (Base - Meteo Simples)")
+    st.header("Machine Learning (Base - Meteo Simples)")
     
     if df_meteo is None:
         st.error("Sem dados de meteorologia.")
@@ -379,7 +386,7 @@ elif section == "Machine Learning (Base)":
 # 4. MACHINE LEARNING (AVANÇADO)
 # ==============================================================================
 elif section == "Machine Learning (Avançado/Lags)":
-    st.header("🤖 Machine Learning (Avançado com Lags)")
+    st.header("Machine Learning (Avançado com Lags)")
     
     if df_meteo is None: st.stop()
         
@@ -464,7 +471,7 @@ elif section == "Machine Learning (Avançado/Lags)":
 # 5. CLASSIFICAÇÃO
 # ==============================================================================
 elif section == "Classificação (Prever Classes)":
-    st.header("🔮 Previsão de Classes (Classificação)")
+    st.header("Previsão de Classes (Classificação)")
     if df_meteo is None: st.stop()
 
     # 1. Preparação (Merge inicial)
@@ -633,7 +640,7 @@ elif section == "SVR Autoregressivo":
         st.plotly_chart(fig_svr, use_container_width=True)
 
         # --- PREVISÃO 7 DIAS ---
-        st.subheader("🔮 Previsão para os Próximos 7 Dias")
+        st.subheader("Previsão para os Próximos 7 Dias")
         
         last_window = list(df_class["Media_Classe"].iloc[-7:].values)
         future_preds = []
@@ -664,7 +671,7 @@ elif section == "SVR Autoregressivo":
 # 7. FUTURE IMPROVEMENTS
 # ==============================================================================
 elif section == "Future Improvements":
-    st.header("🚀 Melhorias Futuras (Future Improvements)")
+    st.header("Melhorias Futuras (Future Improvements)")
     
     st.markdown("""
     Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
@@ -677,27 +684,7 @@ elif section == "Future Improvements":
     
     """)
 
-# ==============================================================================
-# 8. CONCLUSÃO
-# ==============================================================================
-elif section == "Conclusão":
-    st.header("🏁 Conclusão")
-    
-    # Exemplo de métrica final resumida (opcional)
-    st.info("O projeto demonstrou que as condições meteorológicas e o histórico temporal são preditores fundamentais da qualidade do ar.")
 
-    st.markdown("""
-    ### Principais conclusões retiradas:
-    
-    1. **Relação Meteo-Ar:** Observou-se que a velocidade do vento e a precipitação têm um efeito de "limpeza" na atmosfera, reduzindo a concentração de partículas suspensas.
-    2. **Desempenho dos Modelos:** O modelo **SVR Autoregressivo** mostrou-se robusto para previsões de curto prazo, conseguindo seguir as tendências gerais de flutuação da qualidade do ar.
-    3. **Sazonalidade:** Através da EDA, confirmou-se que poluentes como o Ozono ($O_3$) apresentam variações críticas dependendo da temperatura e radiação solar.
-    4. **Impacto da Classificação:** A capacidade de prever a "Classe" de qualidade do ar (e não apenas o valor numérico) provou ser uma ferramenta mais intuitiva para a comunicação de saúde pública aos cidadãos.
-
-    Em suma, o dashboard cumpre o seu propósito de transformar dados brutos em informação acionável, permitindo visualizar não só o estado atual, mas antecipar cenários futuros para uma melhor gestão ambiental.
-    """)
-    
-    st.success("Trabalho concluído com sucesso.")
 
 
 
