@@ -25,7 +25,7 @@ from lightgbm import LGBMRegressor
 # CONFIG
 # =============================
 st.set_page_config(page_title="Qualidade do Ar em Portugal", layout="wide")
-st.title("Qualidade do Ar e Meteorologia em Portugal")
+st.title("Qualidade do Ar em Portugal")
 
 # =============================
 # PROCESSING (CACHE)
@@ -711,6 +711,7 @@ elif section == "Conclusão":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
+
 
 
 
