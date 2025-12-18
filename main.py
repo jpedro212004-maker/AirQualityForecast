@@ -185,15 +185,15 @@ if section == "Sobre o Trabalho":
 elif section == "Datasets":
     st.header("📂 Datasets Utilizados")
     if df_meteo is not None:
-        st.subheader("Meteorologia (Normalizado)")
-        st.dataframe(df_meteo.head())
+        st.subheader("Meteorologia")
+        st.dataframe(df_meteo)
     
-    st.subheader("Qualidade do Ar 2025 (Processado)")
-    st.dataframe(df_ar.head())
+    st.subheader("Qualidade do Ar 2025")
+    st.dataframe(df_ar)
 
     if df2023_clean is not None:
-        st.subheader("Qualidade do Ar 2023 (Processado)")
-        st.dataframe(df2023_clean.head())
+        st.subheader("Qualidade do Ar 2023")
+        st.dataframe(df2023_clean)
 
 # ==============================================================================
 # 2. EDA - ANÁLISE EXPLORATÓRIA COMPLETA
@@ -706,6 +706,7 @@ elif section == "Conclusão":
     """)
     
     st.success("Trabalho concluído com sucesso.")
+
 
 
 
