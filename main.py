@@ -196,57 +196,117 @@ elif section == "Datasets":
         st.dataframe(df2023_clean.head())
 
 # ==============================================================================
-# 2. EDA
-# ==============================================================================
-# ==============================================================================
-# 2. EDA (Atualizado com ambos os Heatmaps)
+# 2. EDA - ANÁLISE EXPLORATÓRIA COMPLETA
 # ==============================================================================
 elif section == "EDA":
-    st.header("Análise Exploratória")
+    st.header("📊 Análise Exploratória de Dados (EDA)")
 
-    # ... (partes anteriores do EDA: Boxplots, Comparação 2023 vs 2025, etc.) ...
-    # [Manter o código que já tens para os subplots fig1, fig2, fig3 e fig4]
+    # --- 1. BOXPLOTS COMPONENTES 2025 ---
+    st.subheader("1. Distribuição dos Poluentes (2025)")
+    df_por_dia = df_ar.groupby("Data")[poluentesclean].mean().reset_index()
+    fig1, axes = plt.subplots(nrows=1, ncols=len(poluentesclean), figsize=(18, 5))
+    for i, col in enumerate(poluentesclean):
+        sns.boxplot(y=df_por_dia[col], ax=axes[i], color="skyblue")
+        axes[i].set_title(f'{col} (2025)')
+        axes[i].set_ylabel("Concentração")
+    st.pyplot(fig1)
 
+    # --- 2. COMPARAÇÃO ANUAL (2023 vs 2025) ---
+    if df2023_clean is not None:
+        st.subheader("2. Comparação Histórica: 2023 vs 2025")
+        # Filtrar datas equivalentes para comparação justa
+        datas_2025 = df_ar["Data"].dt.strftime("%m-%d").unique()
+        df23_p = df2023_clean[df2023_clean["Data"].dt.strftime("%m-%d").isin(datas_2025)].copy()
+        
+        df23_p["Ano"] = 2023
+        df25_p = df_ar.copy()
+        df25_p["Ano"] = 2025
+        
+        df_comp = pd.concat([df23_p, df25_p], ignore_index=True)
+        
+        fig2, axes = plt.subplots(2, 3, figsize=(15, 10))
+        axes = axes.flatten()
+        for i, p in enumerate(poluentesclean):
+            sns.boxplot(data=df_comp, x='Ano', y=p, ax=axes[i], palette="Set2")
+            axes[i].set_title(f"Evolução de {p}")
+        
+        # Remover eixos vazios
+        for j in range(len(poluentesclean), len(axes)): fig2.delaxes(axes[j])
+        plt.tight_layout()
+        st.pyplot(fig2)
+        
+        # --- 3. VARIAÇÃO PERCENTUAL ---
+        st.subheader("3. Variação Percentual por Distrito (2023 ➔ 2025)")
+        df23_avg = df23_p.groupby("Distrito")[poluentesclean].mean().reset_index()
+        df25_avg = df25_p.groupby("Distrito")[poluentesclean].mean().reset_index()
+        comp = pd.merge(df23_avg, df25_avg, on="Distrito", suffixes=("_2023", "_2025"))
+        
+        fig3, axes = plt.subplots(nrows=2, ncols=3, figsize=(18, 10))
+        axes = axes.flatten()
+        for i, p in enumerate(poluentesclean):
+            comp[f"{p}_var"] = ((comp[f"{p}_2025"] - comp[f"{p}_2023"]) / comp[f"{p}_2023"]) * 100
+            comp_s = comp.sort_values(f"{p}_var", ascending=False)
+            axes[i].bar(comp_s["Distrito"], comp_s[f"{p}_var"], color='salmon')
+            axes[i].axhline(0, color="black", linestyle="--", linewidth=1)
+            axes[i].set_title(f"Variação % em {p}")
+            axes[i].tick_params(axis='x', rotation=45)
+        
+        for j in range(len(poluentesclean), len(axes)): fig3.delaxes(axes[j])
+        plt.tight_layout()
+        st.pyplot(fig3)
+        
+        # --- 4. MÉDIA GERAL DA CLASSE ---
+        st.subheader("4. Índice de Qualidade Médio (Comparação)")
+        m_df = pd.DataFrame({
+            'Ano': ['2023', '2025'],
+            'Média da Classe': [df23_p['Media_Classe'].mean(), df25_p['Media_Classe'].mean()]
+        })
+        fig4 = plt.figure(figsize=(7, 5))
+        ax = sns.barplot(data=m_df, x='Ano', y='Média da Classe', palette=['#FFA500', '#1F77B4'])
+        for p in ax.patches:
+            ax.annotate(f'{p.get_height():.2f}', (p.get_x()+p.get_width()/2., p.get_height()), ha='center', va='bottom')
+        st.pyplot(fig4)
+
+    # --- 5. CORRELAÇÃO SIMPLES (Meteo vs Media_Classe) ---
     if df_meteo is not None:
-        st.subheader("5. Correlações (Meteo vs Qualidade Geral)")
+        st.divider()
+        st.subheader("5. Correlação: Meteorologia vs Índice Geral")
+        
         df_ar_m = df_ar.copy()
         df_ar_m["Dia"] = df_ar_m["Data"].dt.normalize()
         df_meteo_m = df_meteo.copy()
         df_meteo_m["Dia"] = df_meteo_m["date"].dt.normalize()
         
-        df_merged_simple = pd.merge(df_ar_m, df_meteo_m, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left")
+        # Merge base para ambas as correlações
+        df_merged_all = pd.merge(df_ar_m, df_meteo_m, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="inner")
         
-        cols_m_simple = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
-        valid_cols_simple = [c for c in cols_m_simple if c in df_merged_simple.columns]
+        cols_simples = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
+        valid_simples = [c for c in cols_simples if c in df_merged_all.columns]
         
-        if len(valid_cols_simple) > 1:
+        if len(valid_simples) > 1:
             fig5 = plt.figure(figsize=(10, 6))
-            sns.heatmap(df_merged_simple[valid_cols_simple].dropna().corr(), annot=True, cmap="coolwarm", fmt=".2f")
-            plt.title("Correlação Simples (Variáveis Meteo vs Média da Classe)")
+            sns.heatmap(df_merged_all[valid_simples].corr(), annot=True, cmap="coolwarm", fmt=".2f", center=0)
+            plt.title("Impacto Meteo no Índice de Qualidade Geral")
             st.pyplot(fig5)
 
-        # --- NOVO: HEATMAP DETALHADO DO JUPYTER ---
-        st.subheader("6. Correlação Detalhada (Meteo vs Cada Poluente)")
+        # --- 6. CORRELAÇÃO DETALHADA (TEU CÓDIGO DO JUPYTER) ---
+        st.subheader("6. Correlação Detalhada: Meteo vs Cada Poluente")
         
-        # Colunas do teu notebook
-        colunas_meteo = [
+        colunas_meteo_jup = [
             "temperature_2m", "relative_humidity_2m", "rain",
             "temperature_80m", "wind_speed_80m", "wind_direction_80m",
             "temperature_2m_max", "temperature_2m_min", "uv_index_max"
         ]
         
-        # Verificar colunas disponíveis no dataframe que já unimos (df_merged_simple)
-        meteo_disp = [c for c in colunas_meteo if c in df_merged_simple.columns]
-        poluentes_disp = [c for c in poluentesclean if c in df_merged_simple.columns]
+        # Filtrar colunas existentes
+        meteo_ready = [c for c in colunas_meteo_jup if c in df_merged_all.columns]
+        poluentes_ready = [c for c in poluentesclean if c in df_merged_all.columns]
         
-        if meteo_disp and poluentes_disp:
-            # Calcular correlação total
-            corr_full = df_merged_simple[meteo_disp + poluentes_disp].corr()
+        if meteo_ready and poluentes_ready:
+            corr_full = df_merged_all[meteo_ready + poluentes_ready].corr()
+            corr_sub = corr_full.loc[meteo_ready, poluentes_ready]
             
-            # Selecionar apenas a sub-matriz Meteorologia (linhas) × Poluentes (colunas)
-            corr_sub = corr_full.loc[meteo_disp, poluentes_disp]
-            
-            fig6, ax6 = plt.subplots(figsize=(10, 8))
+            fig6, ax6 = plt.subplots(figsize=(12, 8))
             sns.heatmap(
                 corr_sub, 
                 annot=True, 
@@ -257,13 +317,13 @@ elif section == "EDA":
                 ax=ax6,
                 cbar_kws={'label': 'Correlação'}
             )
-            ax6.set_title("Correlação Detalhada: Variáveis Meteorológicas vs Poluentes (2025)", fontsize=14, pad=15)
-            ax6.set_xlabel("Poluentes do Ar")
+            ax6.set_title("Matriz de Correlação Meteorologia × Poluentes (Detalhado)", fontsize=14, pad=15)
+            ax6.set_xlabel("Poluentes")
             ax6.set_ylabel("Variáveis Meteorológicas")
             plt.tight_layout()
             st.pyplot(fig6)
         else:
-            st.warning("Aviso: Algumas colunas necessárias para o Heatmap detalhado não foram encontradas.")
+            st.warning("Dados insuficientes para a correlação detalhada.")
 # ==============================================================================
 # 3. MACHINE LEARNING (BASE)
 # ==============================================================================
@@ -646,6 +706,7 @@ elif section == "Conclusão":
     """)
     
     st.success("Trabalho concluído com sucesso.")
+
 
 
 
