@@ -686,7 +686,7 @@ elif section == "Conclusão":
         * **Compreensão via EDA:** A Análise Exploratória de Dados permitiu visualizar o comportamento da qualidade do ar e identificar a sua relação com diversas variáveis.
         * **Engenharia de Features:** A criação de *Lags* e médias móveis melhorou significativamente a capacidade preditiva em comparação com o uso isolado da meteorologia.
         * **Diversidade de Modelos:** Testámos desde modelos lineares a *ensembles* (LightGBM, Random Forest) e redes neuronais (MLP), identificando o melhor ajuste para cada poluente.
-        * **Previsão Recursiva:** A implementação do SVR autoregressivo permite gerar cenários futuros (7 dias) úteis para planeamento.
+        * **Previsão:** A implementação do SVR permite gerar uma previsão (7 dias).
         * **Interface Interativa:** O dashboard permite explorar visualmente os dados e resultados de forma intuitiva.
         """)
         
@@ -709,8 +709,9 @@ elif section == "Conclusão":
     * **2. Monitorizar features de forma a obter dados :** Embora não esteja no nosso EDA, devido à não existir datasets disponíveis existem features que seriam interessantes de explorar tal como o trânsito nas cidades.
     * **3. Continuar a monitorização as features que usamos:** Embora não tenhamos conseguido obter previsões com bons resultados para todos os componentes acreditamos que seja devido também à dimensão do nosso dataset, o estudo continuo e expansão dos dataset é essencial para conseguir melhorar os resultados. 
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
-    * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
+    * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivemos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os mesmos.
     """)
+
 
 
 
