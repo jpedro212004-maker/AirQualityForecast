@@ -582,6 +582,9 @@ elif section == "Classificação (Prever Classes)":
             prog.progress((i+1)/len(targets_class))
         
         st.dataframe(pd.DataFrame(results_class))
+        
+        for target in ["SO2_classe", "PM2.5_classe", "O3_classe"]:
+            st.(print(target, df_class[target].value_counts()))
 
 # ==============================================================================
 # 6. SVR 
@@ -711,6 +714,7 @@ elif section == "Conclusão":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivemos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os mesmos.
     """)
+
 
 
 
