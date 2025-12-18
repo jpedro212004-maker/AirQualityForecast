@@ -378,8 +378,8 @@ elif section == "Machine Learning (Base)":
 # ==============================================================================
 # 4. MACHINE LEARNING (AVANÇADO)
 # ==============================================================================
-elif section == "Machine Learning (Avançado)":
-    st.header("🤖 Machine Learning")
+elif section == "Machine Learning (Avançado/Lags)":
+    st.header("🤖 Machine Learning (Avançado com Lags)")
     
     if df_meteo is None: st.stop()
         
@@ -684,6 +684,7 @@ elif section == "Conclusão":
     """)
     
     st.success("Trabalho concluído com sucesso.")
+
 
 
 
