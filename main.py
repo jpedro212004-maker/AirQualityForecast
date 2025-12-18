@@ -385,8 +385,8 @@ elif section == "Machine Learning (Base)":
 # ==============================================================================
 # 4. MACHINE LEARNING (AVANÇADO)
 # ==============================================================================
-elif section == "Machine Learning (Avançado/Lags)":
-    st.header("Machine Learning (Avançado com Lags)")
+elif section == "Machine Learning (Avançado)":
+    st.header("Machine Learning (Avançado)")
     
     if df_meteo is None: st.stop()
         
@@ -415,7 +415,7 @@ elif section == "Machine Learning (Avançado/Lags)":
     dfL["month"] = dfL["date"].dt.month
     dfL["weekday"] = dfL["date"].dt.weekday
     
-    st.subheader("Dataset Expandido (dfL com Lags)")
+    st.subheader("Dataset:")
     st.dataframe(dfL.head())
     
     X_cols_base = [
@@ -584,10 +584,10 @@ elif section == "Classificação (Prever Classes)":
         st.dataframe(pd.DataFrame(results_class))
 
 # ==============================================================================
-# 6. SVR AUTOREGRESSIVO
+# 6. SVR 
 # ==============================================================================
-elif section == "SVR Autoregressivo":
-    st.header("SVR Autoregressivo")
+elif section == "SVR":
+    st.header("SVR")
     
     if df_meteo is None: st.stop()
     
@@ -614,7 +614,7 @@ elif section == "SVR Autoregressivo":
         
         df_ar_svr = df_ar_svr.dropna()
         
-        st.subheader("Dataframe usado no SVR (df_class / df_ar)")
+        st.subheader("Dataframe usado no SVR")
         st.dataframe(df_ar_svr)
         
         X = df_ar_svr[[f"lag{i}" for i in range(1, 8)]]
@@ -674,7 +674,7 @@ elif section == "Conclusão":
     
     st.write("Abaixo apresentamos uma síntese dos principais resultados alcançados, bem como as limitações e oportunidades de melhoria identificadas.")
 
-    # 1. PRÓS E CONTRAS (AGORA EM PRIMEIRO)
+    # 1. PRÓS E CONTRAS 
     st.subheader("Prós e Contras da Abordagem")
     
     col1, col2 = st.columns(2)
@@ -701,7 +701,7 @@ elif section == "Conclusão":
 
     st.divider()
 
-    # 2. TRABALHO FUTURO (AGORA EM SEGUNDO)
+    # 2. TRABALHO FUTURO 
     st.subheader("Trabalho Futuro")
     st.markdown("""
     Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
@@ -712,4 +712,5 @@ elif section == "Conclusão":
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
     * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
+
 
