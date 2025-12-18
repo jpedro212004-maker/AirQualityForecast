@@ -25,7 +25,7 @@ from lightgbm import LGBMRegressor
 # CONFIG
 # =============================
 st.set_page_config(page_title="Qualidade do Ar em Portugal", layout="wide")
-st.title("🌍 Qualidade do Ar e Meteorologia em Portugal")
+st.title("Qualidade do Ar e Meteorologia em Portugal")
 
 # =============================
 # PROCESSING (CACHE)
@@ -153,7 +153,7 @@ if df_ar is None:
 # ==============================================================================
 # SIDEBAR
 # ==============================================================================
-st.sidebar.title("📌 Navegação")
+st.sidebar.title("Navegação")
 section = st.sidebar.radio(
     "Escolha a secção",
     ["Sobre o Trabalho", "Datasets", "EDA", "Machine Learning (Base)", "Machine Learning (Avançado/Lags)", "Classificação (Prever Classes)", "SVR Autoregressivo","Future Improvements","Conclusão"])
@@ -587,7 +587,7 @@ elif section == "Classificação (Prever Classes)":
 # 6. SVR AUTOREGRESSIVO
 # ==============================================================================
 elif section == "SVR Autoregressivo":
-    st.header("📈 SVR Autoregressivo")
+    st.header("SVR Autoregressivo")
     
     if df_meteo is None: st.stop()
     
@@ -666,13 +666,43 @@ elif section == "SVR Autoregressivo":
     else:
         st.warning("Sem dados suficientes para Lisboa.")
 
-
 # ==============================================================================
-# 7. FUTURE IMPROVEMENTS
+# 7. CONCLUSÕES
 # ==============================================================================
-elif section == "Future Improvements":
-    st.header("Melhorias Futuras (Future Improvements)")
+elif section == "Conclusões":
+    st.header("Conclusões e Trabalho Futuro")
     
+    st.write("Abaixo apresentamos uma síntese dos principais resultados alcançados, bem como as limitações e oportunidades de melhoria identificadas.")
+
+    # 1. PRÓS E CONTRAS (AGORA EM PRIMEIRO)
+    st.subheader("Prós e Contras da Abordagem")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.success("**Pontos Fortes (Prós)**")
+        st.markdown("""
+        * **Recolha Automatizada (API):** A integração com APIs permite recolher e guardar dados de forma automática e muito mais acessível.
+        * **Compreensão via EDA:** A Análise Exploratória de Dados permitiu visualizar o comportamento da qualidade do ar e identificar a sua relação com diversas variáveis.
+        * **Engenharia de Features:** A criação de *Lags* e médias móveis melhorou significativamente a capacidade preditiva em comparação com o uso isolado da meteorologia.
+        * **Diversidade de Modelos:** Testámos desde modelos lineares a *ensembles* (LightGBM, Random Forest) e redes neuronais (MLP), identificando o melhor ajuste para cada poluente.
+        * **Previsão Recursiva:** A implementação do SVR autoregressivo permite gerar cenários futuros (7 dias) úteis para planeamento.
+        * **Interface Interativa:** O dashboard permite explorar visualmente os dados e resultados de forma intuitiva.
+        """)
+        
+    with col2:
+        st.error("**Limitações (Contras)**")
+        st.markdown("""
+        * **Dimensão do Dataset:** O histórico temporal de 2025 é curto, o que limita a capacidade dos modelos de aprenderem padrões sazonais de longo prazo.
+        * **Classes Desequilibradas:** Alguns poluentes (como SO2 e PM2.5) têm pouca variabilidade nas classes de qualidade, dificultando o treino de classificadores (muitos folds ignorados).
+        * **Exclusão de Variáveis Relevantes:** Algumas variáveis que demonstraram forte relação com a qualidade do ar em 2023 tiveram de ser excluídas do modelo, uma vez que não existem dados equivalentes ou atualizados para 2025.
+        * **Dependência de Dados Recentes:** A utilização de *Lags* limita a previsão ao curto prazo, pois o modelo necessita dos dados da semana anterior para projetar o futuro, inviabilizando previsões de longo prazo.
+        """)
+
+    st.divider()
+
+    # 2. TRABALHO FUTURO (AGORA EM SEGUNDO)
+    st.subheader("Trabalho Futuro")
     st.markdown("""
     Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
 
@@ -680,16 +710,5 @@ elif section == "Future Improvements":
     * **2. Monitorizar features de forma a obter dados :** Embora não esteja no nosso EDA, devido à não existir datasets disponíveis existem features que seriam interessantes de explorar tal como o trânsito nas cidades.
     * **3. Continuar a monitorização as features que usamos:** Embora não tenhamos conseguido obter previsões com bons resultados para todos os componentes acreditamos que seja devido também à dimensão do nosso dataset, o estudo continuo e expansão dos dataset é essencial para conseguir melhorar os resultados. 
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
-    * **5. Sistema de Alertas:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos. Seria interessante integrar o sistema de alerta.
-    
+    * **5. Previsão para componentes:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos.
     """)
-
-
-
-
-
-
-
-
-
-
