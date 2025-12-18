@@ -185,44 +185,41 @@ if section == "Sobre o Trabalho":
 elif section == "Datasets":
     st.header("📂 Datasets Utilizados")
     if df_meteo is not None:
-        st.subheader("Meteorologia")
-        st.dataframe(df_meteo)
+        st.subheader("Meteorologia (Normalizado)")
+        st.dataframe(df_meteo.head())
     
-    st.subheader("Qualidade do Ar 2025")
-    st.dataframe(df_ar)
+    st.subheader("Qualidade do Ar 2025 (Processado)")
+    st.dataframe(df_ar.head())
 
     if df2023_clean is not None:
-        st.subheader("Qualidade do Ar 2023")
-        st.dataframe(df2023_clean)
+        st.subheader("Qualidade do Ar 2023 (Processado)")
+        st.dataframe(df2023_clean.head())
 
 # ==============================================================================
-# 2. EDA - ANÁLISE EXPLORATÓRIA COMPLETA
-# ==============================================================================
-# ==============================================================================
-# 2. EDA - ANÁLISE EXPLORATÓRIA OTIMIZADA (GRÁFICOS MENORES)
+# 2. EDA - VERSÃO COMPACTA
 # ==============================================================================
 elif section == "EDA":
-    st.header("📊 Análise Exploratória de Dados (EDA)")
+    st.header("📊 Análise Exploratória (Compacta)")
 
-    # --- 1. BOXPLOTS COMPONENTES 2025 ---
-    st.subheader("1. Distribuição dos Poluentes (2025)")
+    # 1. Componentes Diários 2025 - Reduzido na altura e largura
+    st.subheader("1. Poluentes 2025")
     df_por_dia = df_ar.groupby("Data")[poluentesclean].mean().reset_index()
-    # Reduzi a altura de 5 para 3.5
-    fig1, axes = plt.subplots(nrows=1, ncols=len(poluentesclean), figsize=(14, 3.5)) 
+    fig1, axes = plt.subplots(nrows=1, ncols=len(poluentesclean), figsize=(12, 3)) # Altura 3 é bem pequena
     for i, col in enumerate(poluentesclean):
         sns.boxplot(y=df_por_dia[col], ax=axes[i], color="skyblue")
-        axes[i].set_title(f'{col}', fontsize=10)
+        axes[i].set_title(col, fontsize=9)
         axes[i].set_ylabel("")
+        axes[i].tick_params(labelsize=8)
     plt.tight_layout()
     st.pyplot(fig1)
 
     if df2023_clean is not None:
         st.divider()
-        # USAR COLUNAS PARA POUPAR ESPAÇO VERTICAL
-        col_esq, col_dir = st.columns(2)
-
-        with col_esq:
-            st.subheader("2. Comparação 2023 vs 2025")
+        # Colocamos os gráficos de comparação lado a lado para não ocupar verticalmente
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.subheader("2. 2023 vs 2025")
             datas_2025 = df_ar["Data"].dt.strftime("%m-%d").unique()
             df23_p = df2023_clean[df2023_clean["Data"].dt.strftime("%m-%d").isin(datas_2025)].copy()
             df23_p["Ano"] = 2023
@@ -230,83 +227,79 @@ elif section == "EDA":
             df25_p["Ano"] = 2025
             df_comp = pd.concat([df23_p, df25_p], ignore_index=True)
             
-            # Gráfico mais compacto para caber na coluna
-            fig2, axes = plt.subplots(2, 3, figsize=(10, 7))
+            fig2, axes = plt.subplots(2, 3, figsize=(8, 5)) # Tamanho reduzido para coluna
             axes = axes.flatten()
             for i, p in enumerate(poluentesclean):
                 sns.boxplot(data=df_comp, x='Ano', y=p, ax=axes[i], palette="Set2")
-                axes[i].set_title(p, fontsize=9)
-                axes[i].set_xlabel("")
+                axes[i].set_title(p, fontsize=8)
+                axes[i].set_ylabel("")
+                axes[i].tick_params(labelsize=7)
             for j in range(len(poluentesclean), len(axes)): fig2.delaxes(axes[j])
             plt.tight_layout()
             st.pyplot(fig2)
 
-        with col_dir:
-            st.subheader("3. Índice de Qualidade Médio")
+        with c2:
+            st.subheader("3. Média de Classe")
             m_df = pd.DataFrame({
                 'Ano': ['2023', '2025'],
-                'Média': [df23_p['Media_Classe'].mean(), df25_p['Media_Classe'].mean()]
+                'Media': [df23_p['Media_Classe'].mean(), df25_p['Media_Classe'].mean()]
             })
-            # Gráfico menor
-            fig4 = plt.figure(figsize=(6, 6.5)) 
-            ax = sns.barplot(data=m_df, x='Ano', y='Média', palette=['#FFA500', '#1F77B4'])
-            for p in ax.patches:
-                ax.annotate(f'{p.get_height():.2f}', (p.get_x()+p.get_width()/2., p.get_height()), ha='center', va='bottom')
-            plt.title("Média Geral da Classe")
+            fig4 = plt.figure(figsize=(4, 4)) # Gráfico quase quadrado e pequeno
+            ax = sns.barplot(data=m_df, x='Ano', y='Media', palette=['#FFA500', '#1F77B4'])
+            plt.xticks(fontsize=8)
+            plt.yticks(fontsize=8)
             st.pyplot(fig4)
 
-        st.subheader("4. Variação % por Distrito (2023 ➔ 2025)")
+        st.subheader("4. Variação % por Distrito")
         df23_avg = df23_p.groupby("Distrito")[poluentesclean].mean().reset_index()
         df25_avg = df25_p.groupby("Distrito")[poluentesclean].mean().reset_index()
         comp = pd.merge(df23_avg, df25_avg, on="Distrito", suffixes=("_2023", "_2025"))
         
-        # Reduzi altura de 10 para 6
-        fig3, axes = plt.subplots(nrows=2, ncols=3, figsize=(14, 6))
+        fig3, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 5)) # Altura reduzida de 10 para 5
         axes = axes.flatten()
         for i, p in enumerate(poluentesclean):
             comp[f"{p}_var"] = ((comp[f"{p}_2025"] - comp[f"{p}_2023"]) / comp[f"{p}_2023"]) * 100
             comp_s = comp.sort_values(f"{p}_var", ascending=False)
-            axes[i].bar(comp_s["Distrito"], comp_s[f"{p}_var"], color='salmon')
-            axes[i].axhline(0, color="black", linestyle="--", linewidth=1)
-            axes[i].set_title(f"Var% {p}", fontsize=10)
-            axes[i].tick_params(axis='x', rotation=90, labelsize=8) # Rodar etiquetas para caberem
-        
+            axes[i].bar(comp_s["Distrito"], comp_s[f"{p}_var"])
+            axes[i].set_title(f"{p} Var %", fontsize=8)
+            axes[i].tick_params(axis='x', rotation=45, labelsize=7)
         for j in range(len(poluentesclean), len(axes)): fig3.delaxes(axes[j])
         plt.tight_layout()
         st.pyplot(fig3)
 
-    # --- HEATMAPS LADO A LADO ---
     if df_meteo is not None:
         st.divider()
-        st.subheader("5 & 6. Análise de Correlação Meteorológica")
+        st.subheader("5 & 6. Heatmaps de Correlação")
+        h1, h2 = st.columns(2)
         
-        col_h1, col_h2 = st.columns([1, 1.2]) # Segunda coluna ligeiramente maior para o detalhado
-
         df_ar_m = df_ar.copy()
         df_ar_m["Dia"] = df_ar_m["Data"].dt.normalize()
         df_meteo_m = df_meteo.copy()
         df_meteo_m["Dia"] = df_meteo_m["date"].dt.normalize()
-        df_merged_all = pd.merge(df_ar_m, df_meteo_m, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="inner")
+        df_merged = pd.merge(df_ar_m, df_meteo_m, left_on=["Distrito", "Dia"], right_on=["distrito", "Dia"], how="left")
 
-        with col_h1:
-            cols_simples = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
-            valid_simples = [c for c in cols_simples if c in df_merged_all.columns]
-            if len(valid_simples) > 1:
-                fig5 = plt.figure(figsize=(7, 7))
-                sns.heatmap(df_merged_all[valid_simples].corr(), annot=True, cmap="coolwarm", fmt=".2f", cbar=False)
-                plt.title("Correlação Simples (Geral)")
+        with h1:
+            cols_m = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "Media_Classe"]
+            valid_cols = [c for c in cols_m if c in df_merged.columns]
+            if len(valid_cols) > 1:
+                fig5 = plt.figure(figsize=(5, 4))
+                sns.heatmap(df_merged[valid_cols].dropna().corr(), annot=True, cmap="coolwarm", fmt=".2f", annot_kws={"size": 7})
+                plt.title("Meteo vs Classe", fontsize=9)
+                plt.xticks(fontsize=7, rotation=45)
+                plt.yticks(fontsize=7)
                 st.pyplot(fig5)
 
-        with col_h2:
-            colunas_meteo_jup = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "temperature_2m_max", "uv_index_max"]
-            meteo_ready = [c for c in colunas_meteo_jup if c in df_merged_all.columns]
-            poluentes_ready = [c for c in poluentesclean if c in df_merged_all.columns]
-            
-            if meteo_ready and poluentes_ready:
-                corr_sub = df_merged_all[meteo_ready + poluentes_ready].corr().loc[meteo_ready, poluentes_ready]
-                fig6 = plt.figure(figsize=(8, 7))
-                sns.heatmap(corr_sub, annot=True, fmt=".2f", cmap="coolwarm", center=0, linewidths=0.5)
-                plt.title("Meteo vs Cada Poluente")
+        with h2:
+            col_meteo_jup = ["temperature_2m", "relative_humidity_2m", "rain", "wind_speed_80m", "uv_index_max"]
+            m_p = [c for c in col_meteo_jup if c in df_merged.columns]
+            p_p = [c for c in poluentesclean if c in df_merged.columns]
+            if m_p and p_p:
+                corr_sub = df_merged[m_p + p_p].corr().loc[m_p, p_p]
+                fig6 = plt.figure(figsize=(6, 4))
+                sns.heatmap(corr_sub, annot=True, fmt=".2f", cmap="coolwarm", annot_kws={"size": 7})
+                plt.title("Meteo vs Poluentes (Detalhe)", fontsize=9)
+                plt.xticks(fontsize=7, rotation=45)
+                plt.yticks(fontsize=7)
                 st.pyplot(fig6)
 # ==============================================================================
 # 3. MACHINE LEARNING (BASE)
@@ -662,11 +655,12 @@ elif section == "Future Improvements":
     st.markdown("""
     Apesar dos modelos apresentarem resultados promissores, existem várias vertentes que podem ser exploradas para aumentar a precisão e utilidade da ferramenta:
 
-    * **1. Integração de Dados de Tráfego:** Adicionar dados de fluxo de trânsito em tempo real, uma vez que o tráfego automóvel é a principal fonte de $NO_2$ em zonas urbanas como Lisboa.
-    * **2. Modelos de Deep Learning:** Implementar redes neuronais recorrentes como **LSTM (Long Short-Term Memory)** ou **GRU**, que são mais eficazes a capturar dependências temporais de longo prazo do que o SVR tradicional.
-    * **3. Dados de Incêndios:** Integrar datasets de focos de incêndio (via satélite) para correlacionar picos de $PM2.5$ e $PM10$ com eventos de fogos florestais.
+    * **1. Integração de Novas Features existentes para 2023:** Através do EDA onde relacionamos os dados de 2023 com 2025 foi possível ver relações com features que não foram utilizadas no nosso modelo de previsão como por exemplo os fogos. 
+    * **2. Monitorizar features de forma a obter dados :** Embora não esteja no nosso EDA, devido à não existir datasets disponíveis existem features que seriam interessantes de explorar tal como o trânsito nas cidades.
+    * **3. Continuar a monitorização as features que usamos:** Embora não tenhamos conseguido obter previsões com bons resultados para todos os componentes acreditamos que seja devido também à dimensão do nosso dataset, o estudo continuo e expansão dos dataset é essencial para conseguir melhorar os resultados. 
     * **4. Expansão Geográfica:** Alargar a previsão detalhada a outros distritos além de Lisboa, permitindo uma comparação regional mais robusta.
-    * **5. Sistema de Alertas:** Criar um módulo de notificação automática que envie alertas sempre que a previsão de um poluente exceder os limites legais da UE.
+    * **5. Sistema de Alertas:** Visto que neste trabalho o nosso foco foi estudar a variavél alvo (Média Qualidade do Ar) e não obtivos bons resultados nas métricas para todos os componentes acabamos por não fazer a previsão para os  mesmos. Seria interessante integrar o sistema de alerta.
+    
     """)
 
 # ==============================================================================
